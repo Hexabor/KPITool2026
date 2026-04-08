@@ -26,15 +26,11 @@ const CSVParser = (() => {
     };
 
     // Ecom Sales mapping: only date and order reference
-    // Real header: "Dispatch Date(As per CWCM)", "Epos OrderID"
-    const ECOM_MAPPING = {
-        'dispatch date(as per cwcm)': 'date',
-        'epos orderid': 'reference'
-    };
-
-    // Source-specific mappings
-    const SOURCE_MAPPINGS = {
-        'ecom': ECOM_MAPPING
+    // Real header varies: "Dispatch Date(As per CWCM)", "Epos OrderID", etc.
+    // We use fuzzy matching for ecom (see detectMapping)
+    const ECOM_FIELDS = {
+        date: ['dispatch date'],
+        reference: ['epos order', 'epos orderid']
     };
 
     let columnMapping = { ...DEFAULT_MAPPING };
@@ -76,12 +72,26 @@ const CSVParser = (() => {
 
     /** Detect which CSV columns map to our internal fields */
     function detectMapping(headers, source) {
-        const mapping = SOURCE_MAPPINGS[source] || columnMapping;
         const detected = {};
+
+        if (source === 'ecom') {
+            // Fuzzy match: header must contain one of the keywords
+            for (const header of headers) {
+                const h = header.trim().toLowerCase();
+                for (const [field, keywords] of Object.entries(ECOM_FIELDS)) {
+                    if (keywords.some(kw => h.includes(kw))) {
+                        detected[header] = field;
+                        break;
+                    }
+                }
+            }
+            return detected;
+        }
+
         for (const header of headers) {
             const normalized = header.trim().toLowerCase();
-            if (mapping[normalized]) {
-                detected[header] = mapping[normalized];
+            if (columnMapping[normalized]) {
+                detected[header] = columnMapping[normalized];
             }
         }
         return detected;
