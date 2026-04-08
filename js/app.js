@@ -13,26 +13,36 @@ const App = (() => {
     };
 
     async function init() {
-        Database.init();
+        try {
+            Database.init();
 
-        // Load saved settings
-        const savedMapping = await Database.getSetting('columnMapping');
-        if (savedMapping) CSVParser.setMapping(savedMapping);
+            // Load saved settings
+            const savedMapping = await Database.getSetting('columnMapping');
+            if (savedMapping) CSVParser.setMapping(savedMapping);
 
-        const savedCourseStart = await Database.getSetting('courseStartDate');
-        if (savedCourseStart) {
-            KPIEngine.setCourseStart(savedCourseStart);
-            const el = document.getElementById('course-start-date');
-            if (el) el.value = UI.formatDate(savedCourseStart);
+            const savedCourseStart = await Database.getSetting('courseStartDate');
+            if (savedCourseStart) {
+                KPIEngine.setCourseStart(savedCourseStart);
+                const el = document.getElementById('course-start-date');
+                if (el) el.value = UI.formatDate(savedCourseStart);
+            }
+
+            // Drive (non-blocking)
+            const driveClientId = await Database.getSetting('driveClientId');
+            const driveApiKey = await Database.getSetting('driveApiKey');
+            if (driveClientId) DriveSync.init(driveClientId, driveApiKey);
+        } catch (e) {
+            console.error('Init settings error (non-fatal):', e);
         }
 
-        // Drive (non-blocking)
-        const driveClientId = await Database.getSetting('driveClientId');
-        const driveApiKey = await Database.getSetting('driveApiKey');
-        if (driveClientId) DriveSync.init(driveClientId, driveApiKey);
-
         bindEvents();
-        await refreshHome();
+
+        try {
+            await refreshHome();
+        } catch (e) {
+            console.error('Init refreshHome error:', e);
+        }
+
         updateGreeting();
         updateTopbarWeek();
 
@@ -113,7 +123,7 @@ const App = (() => {
 
         // Top N + ecom filter + chart toggle
         document.getElementById('evo-top-n').addEventListener('change', refreshEvolution);
-        document.getElementById('evo-exclude-ecom').addEventListener('change', refreshEvolution);
+        document.getElementById('evo-exclude-ecom')?.addEventListener('change', refreshEvolution);
         document.getElementById('btn-toggle-chart').addEventListener('click', toggleEvoChart);
 
         // Changelog
@@ -455,7 +465,7 @@ const App = (() => {
         if (store && store !== 'all') {
             sales = sales.filter(r => r.store === store);
         }
-        const excludeEcom = document.getElementById('evo-exclude-ecom').checked;
+        const excludeEcom = document.getElementById('evo-exclude-ecom')?.checked;
         if (excludeEcom) {
             sales = sales.filter(r => r.channel !== 'ecom');
         }
