@@ -1,0 +1,14 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+
+# Data files (no subir CSVs pesados)
+data/*.csv
+data/*.json
+
+# Backups locales
+*.backup.json

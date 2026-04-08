@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="es-ES">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPI Tool 2026</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://unpkg.com/dexie@3.2.6/dist/dexie.min.js"></script>
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- Pako for gzip compression of backups -->
+    <script src="https://unpkg.com/pako@2.1.0/dist/pako.min.js"></script>
+    <script src="https://apis.google.com/js/api.js" defer></script>
+</head>
+<body>
+
+    <!-- ===== TOP BAR ===== -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <span class="topbar-title">KPI Tool 2026</span>
+            <span class="topbar-badge">v1.0</span>
+            <button class="topbar-changelog-btn" id="btn-changelog">Novedades</button>
+            <span class="topbar-badge" id="db-status-badge">DB: --</span>
+        </div>
+        <div class="topbar-right">
+            <span class="topbar-week" id="topbar-week">Semana --</span>
+        </div>
+    </header>
+
+    <!-- ===== SIDEBAR ===== -->
+    <nav class="sidebar">
+        <button class="sidebar-btn active" data-section="home" title="Inicio">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </button>
+        <button class="sidebar-btn" data-section="import" title="Importar CSV">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <button class="sidebar-btn" data-section="data" title="Explorar datos">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        </button>
+        <button class="sidebar-btn" data-section="settings" title="Configuracion">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+    </nav>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="main-content">
+
+        <!-- HOME -->
+        <section id="section-home" class="section active">
+            <div class="home-greeting">
+                <h1 id="home-greeting-text">Buenos dias</h1>
+                <p class="home-subtitle">
+                    <span id="home-store-name">--</span>
+                    <span class="separator">|</span>
+                    Estas en la <strong>semana <span id="home-week-num">--</span></strong> de 2026
+                </p>
+            </div>
+
+            <!-- Home grid: 3 columns -->
+            <div class="home-grid">
+
+                <!-- LEFT COLUMN -->
+                <div class="home-col">
+                    <h4 class="home-col-label">DATOS</h4>
+
+                    <div class="home-card clickable" data-action="go-import">
+                        <div class="home-card-icon import-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </div>
+                        <div>
+                            <strong>Importar CSV</strong>
+                            <small>Cargar datos de Looker</small>
+                        </div>
+                    </div>
+
+                    <div class="home-card clickable" data-action="go-data">
+                        <div class="home-card-icon data-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                        </div>
+                        <div>
+                            <strong>Explorar datos</strong>
+                            <small id="home-record-count">-- registros</small>
+                        </div>
+                    </div>
+
+                    <h4 class="home-col-label" style="margin-top:1.5rem;">HISTORIAL</h4>
+                    <div class="home-card">
+                        <div class="home-card-icon history-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </div>
+                        <div>
+                            <strong>Ultima importacion</strong>
+                            <small id="home-last-import">--</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CENTER COLUMN: Summary -->
+                <div class="home-col home-col-center">
+                    <div class="home-summary-card">
+                        <div class="summary-header">
+                            <h3>Resumen</h3>
+                            <div class="summary-filters">
+                                <select id="home-summary-period">
+                                    <option value="current-week">Esta semana</option>
+                                    <option value="last-week">Semana pasada</option>
+                                    <option value="last-4">Ultimas 4 semanas</option>
+                                    <option value="all">Todo</option>
+                                </select>
+                                <select id="home-summary-store">
+                                    <option value="all">Todas las tiendas</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="summary-stats" id="home-summary-stats">
+                            <div class="stat-box">
+                                <span class="stat-value" id="summary-sales">--</span>
+                                <span class="stat-label">Ventas</span>
+                            </div>
+                            <div class="stat-box">
+                                <span class="stat-value" id="summary-sales-total">--</span>
+                                <span class="stat-label">Total ventas</span>
+                            </div>
+                            <div class="stat-box">
+                                <span class="stat-value" id="summary-buys">--</span>
+                                <span class="stat-label">Compras</span>
+                            </div>
+                            <div class="stat-box">
+                                <span class="stat-value" id="summary-buys-total">--</span>
+                                <span class="stat-label">Total compras</span>
+                            </div>
+                            <div class="stat-box">
+                                <span class="stat-value" id="summary-exchanges">--</span>
+                                <span class="stat-label">Exchanges</span>
+                            </div>
+                            <div class="stat-box">
+                                <span class="stat-value" id="summary-rma">--</span>
+                                <span class="stat-label">RMA</span>
+                            </div>
+                        </div>
+                        <div class="summary-date-range" id="summary-date-range"></div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN -->
+                <div class="home-col">
+                    <h4 class="home-col-label">ANALISIS</h4>
+
+                    <div class="home-card clickable" data-action="go-settings">
+                        <div class="home-card-icon settings-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09"/></svg>
+                        </div>
+                        <div>
+                            <strong>Configuracion</strong>
+                            <small>Calendario y parametros</small>
+                        </div>
+                    </div>
+
+                    <div class="home-card clickable" data-action="export-json">
+                        <div class="home-card-icon export-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </div>
+                        <div>
+                            <strong>Exportar</strong>
+                            <small>Backup comprimido (.gz)</small>
+                        </div>
+                    </div>
+
+                    <div class="home-card clickable" data-action="import-json">
+                        <div class="home-card-icon restore-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </div>
+                        <div>
+                            <strong>Importar backup</strong>
+                            <small>Restaurar .gz o .json</small>
+                        </div>
+                    </div>
+                    <input type="file" id="json-input" accept=".json,.json.gz,.gz" hidden>
+
+                    <h4 class="home-col-label" style="margin-top:1.5rem;">DRIVE</h4>
+                    <div class="home-card disabled" title="Proximamente: sincronizacion con Google Drive">
+                        <div class="home-card-icon drive-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+                        </div>
+                        <div>
+                            <strong>Google Drive</strong>
+                            <small>Proximamente</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI BUTTONS -->
+            <div class="home-kpi-buttons">
+                <h4 class="home-col-label">KPIs</h4>
+                <div class="kpi-button-row">
+                    <button class="kpi-button" data-action="go-kpi-mobiles">
+                        <span class="kpi-button-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span>
+                        <span>Moviles</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- LOG -->
+            <div id="import-log" class="log-container"></div>
+        </section>
+
+        <!-- IMPORT -->
+        <section id="section-import" class="section hidden">
+            <div class="section-header">
+                <h2>Importar datos CSV</h2>
+                <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
+            </div>
+
+            <!-- Source buttons -->
+            <div class="import-sources">
+                <h4 class="home-col-label">ORIGEN DE DATOS</h4>
+                <div class="import-source-row">
+                    <button class="import-source-btn active-source" id="btn-source-baby" data-source="baby-banking">
+                        <span class="import-source-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+                        <div>
+                            <strong>Baby Banking ES</strong>
+                            <small>Operaciones de tienda</small>
+                        </div>
+                    </button>
+                    <button class="import-source-btn disabled" data-source="ecom" title="Proximamente">
+                        <span class="import-source-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
+                        <div>
+                            <strong>Ecom Sales</strong>
+                            <small>Proximamente</small>
+                        </div>
+                    </button>
+                    <button class="import-source-btn disabled" data-source="attachment" title="Proximamente">
+                        <span class="import-source-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>
+                        <div>
+                            <strong>Attachment</strong>
+                            <small>Proximamente</small>
+                        </div>
+                    </button>
+                    <button class="import-source-btn disabled" data-source="captacion" title="Proximamente">
+                        <span class="import-source-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+                        <div>
+                            <strong>Captacion</strong>
+                            <small>Proximamente</small>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Drop zone -->
+            <div class="import-zone" id="drop-zone">
+                <p id="drop-zone-label">Arrastra un CSV de <strong>Baby Banking ES</strong> o haz clic para seleccionar</p>
+                <input type="file" id="csv-input" accept=".csv,.txt" hidden>
+                <button class="btn btn-primary" id="btn-select-file">Seleccionar archivo</button>
+            </div>
+            <div id="import-preview" class="import-preview hidden">
+                <div class="import-preview-top">
+                    <div>
+                        <h3>Vista previa</h3>
+                        <div id="preview-stats" class="preview-stats"></div>
+                    </div>
+                    <div class="import-actions">
+                        <button class="btn btn-primary" id="btn-confirm-import">Confirmar importacion</button>
+                        <button class="btn btn-secondary" id="btn-cancel-import">Cancelar</button>
+                    </div>
+                </div>
+                <div id="preview-table-container" class="table-container">
+                    <table id="preview-table"></table>
+                </div>
+            </div>
+            <div id="import-progress" class="progress-container hidden">
+                <div class="progress-bar"><div class="progress-fill" id="import-progress-fill"></div></div>
+                <p id="import-progress-text">Importando...</p>
+            </div>
+
+            <!-- Import history -->
+            <div class="import-history">
+                <h4 class="home-col-label" style="margin-top:2rem;">HISTORIAL DE IMPORTACIONES</h4>
+                <div class="table-container">
+                    <table class="kpi-table" id="import-history-table">
+                        <thead>
+                            <tr>
+                                <th>Archivo</th>
+                                <th>Origen</th>
+                                <th>Fecha importacion</th>
+                                <th>Datos desde</th>
+                                <th>Datos hasta</th>
+                                <th>Tiendas</th>
+                                <th>Filas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="import-history-tbody">
+                            <tr><td colspan="7" class="empty-msg">Ningun archivo importado todavia.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- DATA EXPLORER -->
+        <section id="section-data" class="section hidden">
+            <div class="section-header">
+                <h2>Explorar datos</h2>
+                <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
+            </div>
+            <div class="data-toolbar">
+                <input type="text" id="data-search" placeholder="Buscar..." class="input-search">
+                <select id="data-filter-type">
+                    <option value="all">Todos los tipos</option>
+                    <option value="sale">Sale</option>
+                    <option value="cash buy">Cash Buy</option>
+                    <option value="exchange">Exchange</option>
+                    <option value="rma">RMA</option>
+                </select>
+                <button class="btn btn-secondary" id="btn-export">Exportar JSON</button>
+            </div>
+            <div id="data-table-container" class="table-container"><table id="data-table"></table></div>
+            <div class="pagination" id="data-pagination"></div>
+        </section>
+
+        <!-- SETTINGS -->
+        <section id="section-settings" class="section hidden">
+            <div class="section-header">
+                <h2>Configuracion</h2>
+                <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
+            </div>
+            <div class="settings-group">
+                <h3>Calendario de negocio</h3>
+                <p>Las semanas van de sabado a viernes. La semana 1 empieza en la fecha indicada.</p>
+                <div style="display:flex; gap:1rem; align-items:center; margin-top:0.5rem;">
+                    <label for="course-start-date">Inicio del curso (sabado):</label>
+                    <input type="text" id="course-start-date" value="27/12/2025" placeholder="DD/MM/AAAA" pattern="\d{2}/\d{2}/\d{4}" maxlength="10" style="width:130px;">
+                    <button class="btn btn-primary" id="btn-save-course-start">Guardar</button>
+                </div>
+                <p id="course-start-info" style="margin-top:0.5rem; font-style:italic;"></p>
+            </div>
+            <div class="settings-group">
+                <h3>Base de datos</h3>
+                <p id="settings-db-info">Cargando info...</p>
+            </div>
+            <div class="settings-group settings-danger">
+                <h3>Restablecer herramienta</h3>
+                <p>Esto eliminara todos los datos importados, el historial de importaciones y la configuracion. La herramienta volvera a su estado inicial.</p>
+                <p><strong>Si primero exportas un backup JSON, podras restaurar todos los datos despues.</strong></p>
+                <button class="btn btn-danger" id="btn-reset-tool">Restablecer todo</button>
+            </div>
+            <div class="settings-group settings-disabled" title="Proximamente: sincronizacion con Google Drive">
+                <h3>Google Drive</h3>
+                <p>Proximamente. La sincronizacion con Google Drive se implementara en una futura version.</p>
+            </div>
+        </section>
+        <!-- KPI: MOBILES -->
+        <section id="section-kpi-mobiles" class="section hidden">
+            <div class="section-header">
+                <h2>Moviles</h2>
+                <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
+            </div>
+
+            <!-- SUMMARY TABLE -->
+            <div class="kpi-panel">
+                <div class="kpi-panel-header">
+                    <h3 class="kpi-panel-title" id="kpi-summary-title">Resumen</h3>
+                    <div class="kpi-panel-filters">
+                        <select id="kpi-panel-scope">
+                            <option value="staff">Por empleado</option>
+                            <option value="total">Global tienda</option>
+                        </select>
+                        <select id="kpi-panel-period">
+                            <option value="current-week">Esta semana</option>
+                            <option value="last-week">Semana pasada</option>
+                            <option value="week-pick">Semana...</option>
+                            <option value="last-4" selected>Ultimas 4 semanas</option>
+                            <option value="all">Todo</option>
+                        </select>
+                        <select id="kpi-panel-week-pick" class="week-input" style="width:70px; display:none;">
+                        </select>
+                        <select id="kpi-panel-store">
+                            <option value="all">Todas las tiendas</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="kpi-panel-week-range" id="kpi-panel-week-range"></div>
+                <div class="kpi-panel-body">
+                    <table class="kpi-table" id="kpi-panel-table">
+                        <thead id="kpi-panel-thead">
+                            <tr>
+                                <th class="sortable" data-col="name">Empleado</th>
+                                <th class="sortable" data-col="mobiles">Moviles</th>
+                                <th class="sortable" data-col="mobilesTotal">Total</th>
+                                <th class="sortable" data-col="services">Services</th>
+                                <th class="sortable" data-col="pctServices">% Gel</th>
+                                <th class="sortable" data-col="basics">Basics</th>
+                                <th class="sortable" data-col="pctBasics">% Basics</th>
+                                <th class="sortable" data-col="pctCombo">% Combo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kpi-panel-tbody">
+                            <tr><td colspan="7" class="empty-msg">Sin datos. Importa un CSV para empezar.</td></tr>
+                        </tbody>
+                        <tfoot id="kpi-panel-tfoot"></tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- WEEKLY EVOLUTION -->
+            <div class="kpi-panel" style="margin-top:1.25rem;">
+                <div class="kpi-panel-header">
+                    <h3 class="kpi-panel-title">Evolucion semanal</h3>
+                    <div class="kpi-panel-filters">
+                        <label class="filter-label">De W</label>
+                        <input type="number" id="evo-week-from" class="week-input" min="1" value="1">
+                        <label class="filter-label">a W</label>
+                        <input type="number" id="evo-week-to" class="week-input" min="1" value="15">
+                        <select id="evo-metric">
+                            <option value="mobiles">Moviles (uds)</option>
+                            <option value="mobilesTotal">Moviles (total)</option>
+                            <option value="services">Services</option>
+                            <option value="pctServices">% Gel/Movil</option>
+                            <option value="basics">Basics</option>
+                            <option value="pctBasics">% Basics/Movil</option>
+                            <option value="pctCombo">% Combo (gel+basics)/Movil</option>
+                        </select>
+                        <select id="evo-scope">
+                            <option value="staff">Por empleado</option>
+                            <option value="total">Total tienda</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="kpi-panel-body">
+                    <div class="table-container">
+                        <table class="kpi-table" id="evo-table">
+                            <thead id="evo-thead"><tr><th>--</th></tr></thead>
+                            <tbody id="evo-tbody">
+                                <tr><td class="empty-msg">Selecciona semanas para ver la evolucion.</td></tr>
+                            </tbody>
+                            <tfoot id="evo-tfoot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Changelog modal -->
+    <div class="modal-overlay hidden" id="changelog-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2>Novedades</h2>
+                <button class="modal-close" id="btn-changelog-close">&times;</button>
+            </div>
+            <div class="modal-body" id="changelog-body"></div>
+        </div>
+    </div>
+
+    <!-- App modules -->
+    <script src="js/changelog.js"></script>
+    <script src="js/modules/database.js"></script>
+    <script src="js/modules/csv-parser.js"></script>
+    <script src="js/modules/kpi-engine.js"></script>
+    <script src="js/modules/drive-sync.js"></script>
+    <script src="js/modules/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
