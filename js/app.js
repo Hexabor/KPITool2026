@@ -135,9 +135,16 @@ const App = (() => {
         document.getElementById('dg-exclude-ecom').addEventListener('change', refreshDashGeneral);
 
         // Dashboard: detail
-        document.getElementById('dd-week').addEventListener('change', refreshDashDetail);
-        document.getElementById('dd-metric').addEventListener('change', refreshDashDetail);
+        document.getElementById('dd-week-from').addEventListener('change', refreshDashDetail);
+        document.getElementById('dd-week-to').addEventListener('change', refreshDashDetail);
+        document.getElementById('dd-metric').addEventListener('change', () => {
+            ddState.lastAutoMetric = null;  // force recompute of top 5 if not touched
+            refreshDashDetail();
+        });
         document.getElementById('dd-exclude-ecom').addEventListener('change', refreshDashDetail);
+
+        // Detail: multi-select dropdowns
+        initMultiSelectHandlers();
 
         // Changelog
         document.getElementById('btn-changelog').addEventListener('click', openChangelog);
@@ -368,8 +375,6 @@ const App = (() => {
         const stores = await Database.getDistinctValues('store');
         populateStoreSelect('kpi-panel-store', stores);
 
-        const today = new Date().toISOString().substring(0, 10);
-        const currentWeek = KPIEngine.helpers.businessWeek(today);
         const fromEl = document.getElementById('evo-week-from');
         const toEl = document.getElementById('evo-week-to');
 
@@ -378,10 +383,8 @@ const App = (() => {
         if (savedFrom && savedTo) {
             fromEl.value = savedFrom;
             toEl.value = savedTo;
-        } else if (parseInt(toEl.value) < 2) {
-            fromEl.value = Math.max(1, currentWeek - 3);
-            toEl.value = currentWeek;
         }
+        // If no saved range, refreshEvolution will auto-fill from available data.
 
         refreshEvolution();
     }
@@ -538,9 +541,43 @@ const App = (() => {
         selectedStaff: null  // clicked row for chart highlight
     };
 
+    // Dashboard: General state (sort)
+    let dgState = {
+        sortCol: null,
+        sortDir: 'desc'
+    };
+
+    // Dashboard: Detail state (sort + multi-select filters)
+    let ddState = {
+        sortCol: null,
+        sortDir: 'desc',
+        visibleCats: null,     // Set<string> of selected categories; null = "all" fallback
+        visibleStores: null,   // Set<string>
+        catsTouched: false,    // user manually altered category selection
+        storesTouched: false,
+        allCats: [],           // full list seen last render (for the panel UI)
+        allStores: [],
+        lastAutoMetric: null,  // metric used to compute default top 5 last time
+        lastAutoRange: null    // "weekFrom-weekTo" key for default recompute check
+    };
+
     async function refreshEvolution() {
-        const weekFrom = parseInt(document.getElementById('evo-week-from').value) || 1;
-        const weekTo = parseInt(document.getElementById('evo-week-to').value) || weekFrom;
+        const available = await updateAvailableWeeksLabel('evo-available');
+        const fromEl = document.getElementById('evo-week-from');
+        const toEl = document.getElementById('evo-week-to');
+        if (!parseInt(toEl.value) || parseInt(toEl.value) < 1) {
+            if (available) {
+                fromEl.value = available.weekMin;
+                toEl.value = available.weekMax;
+            } else {
+                const today = new Date().toISOString().substring(0, 10);
+                const currentWeek = KPIEngine.helpers.businessWeek(today);
+                fromEl.value = Math.max(1, currentWeek - 3);
+                toEl.value = currentWeek;
+            }
+        }
+        const weekFrom = parseInt(fromEl.value) || 1;
+        const weekTo = parseInt(toEl.value) || weekFrom;
         evoState.metric = document.getElementById('evo-metric').value;
         evoState.scope = document.getElementById('evo-scope').value;
         const store = getStoreValue('kpi-panel-store');
@@ -573,7 +610,7 @@ const App = (() => {
             return;
         }
 
-        const allData = await Database.getOperationsForKPI({});
+        const allData = await Database.getAllOperations();
         let records = allData;
         if (store && store !== 'all') {
             records = records.filter(r => r.store === store);
@@ -1134,6 +1171,7 @@ const App = (() => {
             UI.addLog(`Importacion OK: ${added.toLocaleString()} registros`, 'success');
 
             currentPreviewData = null;
+            resetDashboardFilters();
             await renderImportHistory();
             await renderEcomTimeline();
             await refreshHome();
@@ -1176,6 +1214,7 @@ const App = (() => {
             UI.addLog(`Cruce completado: ${parts.join(', ')}`, 'success');
 
             currentPreviewData = null;
+            resetDashboardFilters();
             await renderImportHistory();
             await renderEcomTimeline();
             await refreshHome();
@@ -1437,6 +1476,7 @@ const App = (() => {
         await Database.setSetting('courseStartDate', null);
         KPIEngine.setCourseStart('2025-12-27');
         document.getElementById('course-start-date').value = '27/12/2025';
+        resetDashboardFilters();
         await refreshHome();
         navigateTo('home');
         UI.addLog('Herramienta restablecida', 'success');
@@ -1484,6 +1524,7 @@ const App = (() => {
                 }
             }
 
+            resetDashboardFilters();
             await refreshHome();
             UI.addLog(`Backup restaurado: ${data.operations.length.toLocaleString()} registros desde ${file.name}`, 'success');
         } catch (err) {
@@ -1609,6 +1650,165 @@ const App = (() => {
         };
     }
 
+    /**
+     * Week-year label: year of the Friday (end of week).
+     * W1 starts sat 27/12/2025 and ends fri 02/01/2026 -> year "2026".
+     */
+    function weekYear(week) {
+        return weekDateRange(week).to.substring(0, 4);
+    }
+
+    /**
+     * Combined available BB data range, derived from min/max dates.
+     * Returns { weekMin, weekMax, dateMin, dateMax } or null.
+     */
+    async function getAvailableWeekRange() {
+        const range = await Database.getAvailableBBDateRange();
+        if (!range) return null;
+        return {
+            dateMin: range.dateMin,
+            dateMax: range.dateMax,
+            weekMin: KPIEngine.helpers.businessWeek(range.dateMin),
+            weekMax: KPIEngine.helpers.businessWeek(range.dateMax)
+        };
+    }
+
+    function formatAvailableWeeksLabel(range) {
+        if (!range) return 'Sin datos disponibles.';
+        const wrFrom = weekDateRange(range.weekMin);
+        const wrTo = weekDateRange(range.weekMax);
+        const yFrom = wrFrom.to.substring(0, 4);
+        const yTo = wrTo.to.substring(0, 4);
+        const dateSpan = `${UI.formatDate(wrFrom.from)} — ${UI.formatDate(wrTo.to)}`;
+        if (yFrom === yTo) {
+            return range.weekMin === range.weekMax
+                ? `Datos disponibles: W${range.weekMin} de ${yFrom} (${dateSpan})`
+                : `Datos disponibles: W${range.weekMin} — W${range.weekMax} de ${yFrom} (${dateSpan})`;
+        }
+        return `Datos disponibles: W${range.weekMin}/${yFrom} (${UI.formatDate(wrFrom.from)}) — W${range.weekMax}/${yTo} (${UI.formatDate(wrTo.to)})`;
+    }
+
+    async function updateAvailableWeeksLabel(elId) {
+        const el = document.getElementById(elId);
+        if (!el) return null;
+        const range = await getAvailableWeekRange();
+        el.textContent = formatAvailableWeeksLabel(range);
+        return range;
+    }
+
+    // ============================
+    // MULTI-SELECT (Detail view)
+    // ============================
+    function initMultiSelectHandlers() {
+        // Toggle panels (and close others when one opens)
+        const cfg = [
+            { trigger: 'dd-cat-trigger', panel: 'dd-cat-panel' },
+            { trigger: 'dd-store-trigger', panel: 'dd-store-panel' }
+        ];
+        cfg.forEach(({ trigger, panel }) => {
+            document.getElementById(trigger).addEventListener('click', (e) => {
+                e.stopPropagation();
+                const p = document.getElementById(panel);
+                const wasOpen = p.classList.contains('open');
+                // Close all panels first
+                cfg.forEach(c => document.getElementById(c.panel).classList.remove('open'));
+                if (!wasOpen) p.classList.add('open');
+            });
+        });
+
+        // Close on outside click
+        document.addEventListener('click', (e) => {
+            cfg.forEach(({ panel }) => {
+                const p = document.getElementById(panel);
+                if (!p.contains(e.target)) p.classList.remove('open');
+            });
+        });
+
+        // "Select all" checkboxes
+        document.getElementById('dd-cat-all').addEventListener('change', (e) => {
+            if (e.target.checked) ddState.visibleCats = new Set(ddState.allCats);
+            else ddState.visibleCats = new Set();
+            ddState.catsTouched = true;
+            refreshDashDetail();
+        });
+        document.getElementById('dd-store-all').addEventListener('change', (e) => {
+            if (e.target.checked) ddState.visibleStores = new Set(ddState.allStores);
+            else ddState.visibleStores = new Set();
+            ddState.storesTouched = true;
+            refreshDashDetail();
+        });
+
+        // Search inputs
+        document.getElementById('dd-cat-search').addEventListener('input', (e) => {
+            renderMultiSelectList('dd-cat-list', ddState.allCats, ddState.visibleCats, e.target.value.toLowerCase(), 'cat');
+        });
+        document.getElementById('dd-store-search').addEventListener('input', (e) => {
+            renderMultiSelectList('dd-store-list', ddState.allStores, ddState.visibleStores, e.target.value.toLowerCase(), 'store');
+        });
+
+        // Reset to top 5 for categories
+        document.getElementById('dd-cat-top5').addEventListener('click', () => {
+            ddState.catsTouched = false;
+            ddState.lastAutoMetric = null;
+            refreshDashDetail();
+        });
+
+        // Item toggles (delegation)
+        document.getElementById('dd-cat-list').addEventListener('change', (e) => {
+            if (e.target.matches('input[type="checkbox"]')) {
+                const value = e.target.dataset.value;
+                if (!ddState.visibleCats) ddState.visibleCats = new Set();
+                if (e.target.checked) ddState.visibleCats.add(value);
+                else ddState.visibleCats.delete(value);
+                ddState.catsTouched = true;
+                refreshDashDetail();
+            }
+        });
+        document.getElementById('dd-store-list').addEventListener('change', (e) => {
+            if (e.target.matches('input[type="checkbox"]')) {
+                const value = e.target.dataset.value;
+                if (!ddState.visibleStores) ddState.visibleStores = new Set();
+                if (e.target.checked) ddState.visibleStores.add(value);
+                else ddState.visibleStores.delete(value);
+                ddState.storesTouched = true;
+                refreshDashDetail();
+            }
+        });
+    }
+
+    function renderMultiSelectList(listId, items, selectedSet, searchTerm, kind) {
+        const el = document.getElementById(listId);
+        if (!el) return;
+        const term = (searchTerm || '').toLowerCase();
+        const filtered = term ? items.filter(it => it.toLowerCase().includes(term)) : items;
+        if (!filtered.length) {
+            el.innerHTML = '<div class="multi-select-option" style="color:var(--color-text-lighter);justify-content:center;">Sin coincidencias</div>';
+            return;
+        }
+        el.innerHTML = filtered.map(it => {
+            const checked = selectedSet && selectedSet.has(it) ? 'checked' : '';
+            return `<label class="multi-select-option">
+                <input type="checkbox" data-value="${escapeHtml(it)}" ${checked}>
+                <span class="multi-select-option-label" title="${escapeHtml(it)}">${escapeHtml(it)}</span>
+            </label>`;
+        }).join('');
+    }
+
+    function updateMultiSelectUI(kind) {
+        const isCat = kind === 'cat';
+        const listId = isCat ? 'dd-cat-list' : 'dd-store-list';
+        const countId = isCat ? 'dd-cat-count' : 'dd-store-count';
+        const searchId = isCat ? 'dd-cat-search' : 'dd-store-search';
+        const allCbId = isCat ? 'dd-cat-all' : 'dd-store-all';
+        const items = isCat ? ddState.allCats : ddState.allStores;
+        const selected = isCat ? ddState.visibleCats : ddState.visibleStores;
+        const searchVal = document.getElementById(searchId).value.toLowerCase();
+        renderMultiSelectList(listId, items, selected, searchVal, kind);
+        const nSel = selected ? selected.size : 0;
+        document.getElementById(countId).textContent = `${nSel}/${items.length}`;
+        document.getElementById(allCbId).checked = nSel === items.length && items.length > 0;
+    }
+
     function updateWeekRangeLabel(elId, weekFrom, weekTo) {
         const from = weekDateRange(weekFrom);
         const to = weekDateRange(weekTo);
@@ -1622,14 +1822,44 @@ const App = (() => {
     // ============================
     // DASHBOARD: GENERAL (Tiendas x KPIs)
     // ============================
+    // Reset dashboard state (sort, multi-select filters) after a data change.
+    function resetDashboardFilters() {
+        dgState.sortCol = null;
+        dgState.sortDir = 'desc';
+        ddState.sortCol = null;
+        ddState.sortDir = 'desc';
+        ddState.visibleCats = null;
+        ddState.visibleStores = null;
+        ddState.catsTouched = false;
+        ddState.storesTouched = false;
+        ddState.lastAutoMetric = null;
+        ddState.lastAutoRange = null;
+    }
+
+    function sortDashGeneral(col) {
+        if (dgState.sortCol === col) {
+            dgState.sortDir = dgState.sortDir === 'desc' ? 'asc' : 'desc';
+        } else {
+            dgState.sortCol = col;
+            dgState.sortDir = 'desc';
+        }
+        refreshDashGeneral();
+    }
+
     async function refreshDashGeneral() {
-        const today = new Date().toISOString().substring(0, 10);
-        const currentWeek = KPIEngine.helpers.businessWeek(today);
+        const available = await updateAvailableWeeksLabel('dg-available');
         const fromEl = document.getElementById('dg-week-from');
         const toEl = document.getElementById('dg-week-to');
         if (!parseInt(toEl.value) || parseInt(toEl.value) < 1) {
-            fromEl.value = Math.max(1, currentWeek - 3);
-            toEl.value = currentWeek;
+            if (available) {
+                fromEl.value = available.weekMin;
+                toEl.value = available.weekMax;
+            } else {
+                const today = new Date().toISOString().substring(0, 10);
+                const currentWeek = KPIEngine.helpers.businessWeek(today);
+                fromEl.value = Math.max(1, currentWeek - 3);
+                toEl.value = currentWeek;
+            }
         }
         const weekFrom = parseInt(fromEl.value) || 1;
         const weekTo = parseInt(toEl.value) || weekFrom;
@@ -1643,18 +1873,38 @@ const App = (() => {
             return;
         }
 
-        const allData = await Database.getOperationsForKPI({});
+        const allData = await Database.getAllOperations();
         const rangeRecords = allData.filter(r => r.week >= weekFrom && r.week <= weekTo);
         const agg = aggregateByStore(rangeRecords, excludeEcom);
 
-        const stores = Object.keys(agg).sort((a, b) => a.localeCompare(b));
+        // Sort stores by the selected column (desc/asc) or alphabetically if none
+        const sortCol = dgState.sortCol;
+        const sortDir = dgState.sortDir;
+        const dgSortValue = (storeName, col) => {
+            const a = agg[storeName];
+            if (col === 'name') return storeName.toLowerCase();
+            if (col === 'netSales') return a.netSales;
+            if (col === 'buys') return a.buys;
+            if (col === 'pctVale') return a.buys > 0 ? a.pctVale : -1;
+            return 0;
+        };
+        const stores = Object.keys(agg).sort((a, b) => {
+            if (!sortCol) return a.localeCompare(b);
+            const va = dgSortValue(a, sortCol);
+            const vb = dgSortValue(b, sortCol);
+            if (typeof va === 'string') {
+                return sortDir === 'desc' ? vb.localeCompare(va) : va.localeCompare(vb);
+            }
+            return sortDir === 'desc' ? (vb - va) : (va - vb);
+        });
 
+        const sortCls = (col) => sortCol === col ? (sortDir === 'desc' ? ' sort-desc' : ' sort-asc') : '';
         const thead = document.getElementById('dg-thead');
         thead.innerHTML = `<tr>
-            <th class="col-name">Tienda</th>
-            <th>Ventas</th>
-            <th>Compras</th>
-            <th title="% de compras hechas con vale de tienda (exchange)">% Vale</th>
+            <th class="col-name sortable${sortCls('name')}" data-dg-sort="name">Tienda</th>
+            <th class="sortable${sortCls('netSales')}" data-dg-sort="netSales">Ventas</th>
+            <th class="sortable${sortCls('buys')}" data-dg-sort="buys">Compras</th>
+            <th class="sortable${sortCls('pctVale')}" data-dg-sort="pctVale" title="% de compras hechas con vale de tienda (exchange)">% Vale</th>
             <th>Socios</th>
             <th>Stock</th>
             <th>KPI 1</th>
@@ -1663,6 +1913,9 @@ const App = (() => {
             <th>KPI 4</th>
             <th>KPI 5</th>
         </tr>`;
+        thead.querySelectorAll('th.sortable').forEach(th => {
+            th.addEventListener('click', () => sortDashGeneral(th.dataset.dgSort));
+        });
 
         const tbody = document.getElementById('dg-tbody');
         if (!stores.length) {
@@ -1714,24 +1967,57 @@ const App = (() => {
     // ============================
     // DASHBOARD: DETAIL (Tiendas x Categoria)
     // ============================
-    async function refreshDashDetail() {
-        const today = new Date().toISOString().substring(0, 10);
-        const currentWeek = KPIEngine.helpers.businessWeek(today);
-        const weekEl = document.getElementById('dd-week');
-        if (!parseInt(weekEl.value) || parseInt(weekEl.value) < 1) {
-            weekEl.value = currentWeek;
+    function sortDashDetail(col) {
+        if (ddState.sortCol === col) {
+            ddState.sortDir = ddState.sortDir === 'desc' ? 'asc' : 'desc';
+        } else {
+            ddState.sortCol = col;
+            ddState.sortDir = 'desc';
         }
-        const week = parseInt(weekEl.value) || 1;
+        refreshDashDetail();
+    }
+
+    async function refreshDashDetail() {
+        const available = await updateAvailableWeeksLabel('dd-available');
+        const fromEl = document.getElementById('dd-week-from');
+        const toEl = document.getElementById('dd-week-to');
+        if (!parseInt(toEl.value) || parseInt(toEl.value) < 1) {
+            if (available) {
+                fromEl.value = available.weekMin;
+                toEl.value = available.weekMax;
+            } else {
+                const today = new Date().toISOString().substring(0, 10);
+                const currentWeek = KPIEngine.helpers.businessWeek(today);
+                fromEl.value = currentWeek;
+                toEl.value = currentWeek;
+            }
+        }
+        const weekFrom = parseInt(fromEl.value) || 1;
+        const weekTo = parseInt(toEl.value) || weekFrom;
         const metric = document.getElementById('dd-metric').value;
         const excludeEcom = document.getElementById('dd-exclude-ecom').checked;
 
-        updateWeekRangeLabel('dd-week-range', week, week);
+        updateWeekRangeLabel('dd-week-range', weekFrom, weekTo);
 
-        const allData = await Database.getOperationsForKPI({});
-        const weekRecords = allData.filter(r => r.week === week);
+        if (weekTo < weekFrom || weekTo - weekFrom > 52) {
+            document.getElementById('dd-tbody').innerHTML =
+                '<tr><td class="empty-msg">Rango de semanas no valido.</td></tr>';
+            document.getElementById('dd-thead').innerHTML = '<tr><th>Tienda</th></tr>';
+            document.getElementById('dd-tfoot').innerHTML = '';
+            return;
+        }
 
-        // Aggregate by store x category
+        const allData = await Database.getAllOperations();
+        const weekRecords = allData.filter(r => r.week >= weekFrom && r.week <= weekTo);
+
+        // Aggregate by store x category.
+        // For 'tickets' we also keep per-store, per-category and global Sets to
+        // avoid inflating totals (the same reference may span multiple categories
+        // of the same store; summing per-cell .size would count it twice).
         const byStoreCat = {};
+        const storeTickets = {};
+        const catTickets = {};
+        const allTickets = new Set();
         const allCategories = new Set();
         const allStores = new Set();
 
@@ -1751,7 +2037,14 @@ const App = (() => {
             if (r.type === 'sale') {
                 bucket.netSales += total;
                 bucket.units += (r.quantity || 0);
-                if (r.reference) bucket.tickets.add(r.reference);
+                if (r.reference) {
+                    bucket.tickets.add(r.reference);
+                    if (!storeTickets[store]) storeTickets[store] = new Set();
+                    storeTickets[store].add(r.reference);
+                    if (!catTickets[cat]) catTickets[cat] = new Set();
+                    catTickets[cat].add(r.reference);
+                    allTickets.add(r.reference);
+                }
             } else if (r.type === 'refund') {
                 bucket.netSales -= Math.abs(total);
             } else if (r.type === 'cash buy' || r.type === 'exchange') {
@@ -1759,60 +2052,184 @@ const App = (() => {
             }
         }
 
-        const stores = [...allStores].sort((a, b) => a.localeCompare(b));
-        const categories = [...allCategories].sort((a, b) => a.localeCompare(b));
+        const allCatsArr = [...allCategories].sort((a, b) => a.localeCompare(b));
+        const allStoresArr = [...allStores].sort((a, b) => a.localeCompare(b));
+        ddState.allCats = allCatsArr;
+        ddState.allStores = allStoresArr;
 
         const thead = document.getElementById('dd-thead');
         const tbody = document.getElementById('dd-tbody');
         const tfoot = document.getElementById('dd-tfoot');
 
-        if (!stores.length || !categories.length) {
+        if (!allStoresArr.length || !allCatsArr.length) {
             thead.innerHTML = '<tr><th>Tienda</th></tr>';
-            tbody.innerHTML = '<tr><td class="empty-msg">Sin datos para esta semana.</td></tr>';
+            const msg = weekFrom === weekTo
+                ? 'Sin datos para esta semana.'
+                : 'Sin datos para este rango de semanas.';
+            tbody.innerHTML = `<tr><td class="empty-msg">${msg}</td></tr>`;
             tfoot.innerHTML = '';
+            updateMultiSelectUI('cat');
+            updateMultiSelectUI('store');
             return;
         }
 
         const isCurrency = metric === 'netSales' || metric === 'buys';
+        const isTickets = metric === 'tickets';
         const extract = (bucket) => {
             if (!bucket) return 0;
-            if (metric === 'tickets') return bucket.tickets.size;
+            if (isTickets) return bucket.tickets.size;
             return bucket[metric] || 0;
         };
         const fmt = (v) => isCurrency ? formatCurrency(v) : (v || 0).toLocaleString('es-ES');
 
+        // --- Multi-select defaults / reconciliation ---
+        // Category total across all stores, for the active metric (used for top 5 ranking)
+        const catTotalForMetric = (cat) => {
+            if (isTickets) return catTickets[cat] ? catTickets[cat].size : 0;
+            let t = 0;
+            for (const store of allStoresArr) {
+                const b = byStoreCat[store]?.[cat];
+                if (b) t += b[metric] || 0;
+            }
+            return t;
+        };
+
+        const rangeKey = `${weekFrom}-${weekTo}-${excludeEcom ? 'e' : 'f'}`;
+        const needTop5 = !ddState.catsTouched && (
+            !ddState.visibleCats ||
+            ddState.lastAutoMetric !== metric ||
+            ddState.lastAutoRange !== rangeKey
+        );
+        if (needTop5) {
+            const top5 = [...allCatsArr]
+                .sort((a, b) => catTotalForMetric(b) - catTotalForMetric(a))
+                .slice(0, 5);
+            ddState.visibleCats = new Set(top5);
+            ddState.lastAutoMetric = metric;
+            ddState.lastAutoRange = rangeKey;
+        } else if (ddState.visibleCats) {
+            // Drop stale categories that no longer exist in the data
+            ddState.visibleCats = new Set([...ddState.visibleCats].filter(c => allCategories.has(c)));
+        }
+
+        if (!ddState.storesTouched || !ddState.visibleStores) {
+            ddState.visibleStores = new Set(allStoresArr);
+        } else {
+            ddState.visibleStores = new Set([...ddState.visibleStores].filter(s => allStores.has(s)));
+        }
+
+        updateMultiSelectUI('cat');
+        updateMultiSelectUI('store');
+
+        const visibleCats = allCatsArr.filter(c => ddState.visibleCats.has(c));
+        let visibleStores = allStoresArr.filter(s => ddState.visibleStores.has(s));
+
+        if (!visibleStores.length || !visibleCats.length) {
+            thead.innerHTML = '<tr><th>Tienda</th></tr>';
+            tbody.innerHTML = '<tr><td class="empty-msg">No hay categorias/tiendas seleccionadas. Despliega los filtros.</td></tr>';
+            tfoot.innerHTML = '';
+            return;
+        }
+
+        // --- Row values and row totals (computed up front so we can sort) ---
+        const rowValues = {};  // store -> { cat -> v }
+        const rowTotals = {};
+        for (const store of visibleStores) {
+            rowValues[store] = {};
+            for (const cat of visibleCats) {
+                rowValues[store][cat] = extract(byStoreCat[store]?.[cat]);
+            }
+            if (isTickets) {
+                const refs = new Set();
+                for (const cat of visibleCats) {
+                    const bucket = byStoreCat[store]?.[cat];
+                    if (bucket && bucket.tickets) {
+                        for (const ref of bucket.tickets) refs.add(ref);
+                    }
+                }
+                rowTotals[store] = refs.size;
+            } else {
+                rowTotals[store] = visibleCats.reduce((sum, cat) => sum + rowValues[store][cat], 0);
+            }
+        }
+
+        // --- Sort ---
+        const sortCol = ddState.sortCol;
+        const sortDir = ddState.sortDir;
+        if (sortCol) {
+            const getVal = (store) => {
+                if (sortCol === 'name') return store.toLowerCase();
+                if (sortCol === '__total__') return rowTotals[store] || 0;
+                if (sortCol.startsWith('cat:')) return rowValues[store][sortCol.slice(4)] || 0;
+                return 0;
+            };
+            visibleStores.sort((a, b) => {
+                const va = getVal(a);
+                const vb = getVal(b);
+                if (typeof va === 'string') {
+                    return sortDir === 'desc' ? vb.localeCompare(va) : va.localeCompare(vb);
+                }
+                return sortDir === 'desc' ? (vb - va) : (va - vb);
+            });
+        }
+
+        const sortCls = (col) => sortCol === col ? (sortDir === 'desc' ? ' sort-desc' : ' sort-asc') : '';
+
         // Header
-        let head = '<tr><th class="col-name">Tienda</th>';
-        for (const cat of categories) head += `<th>${escapeHtml(cat)}</th>`;
-        head += '<th class="col-shaded">Total</th></tr>';
+        let head = `<tr><th class="col-name sortable${sortCls('name')}" data-dd-sort="name">Tienda</th>`;
+        for (const cat of visibleCats) {
+            const key = `cat:${cat}`;
+            head += `<th class="sortable${sortCls(key)}" data-dd-sort="${escapeHtml(key)}">${escapeHtml(cat)}</th>`;
+        }
+        head += `<th class="col-shaded sortable${sortCls('__total__')}" data-dd-sort="__total__">Total</th></tr>`;
         thead.innerHTML = head;
+        thead.querySelectorAll('th.sortable').forEach(th => {
+            th.addEventListener('click', () => sortDashDetail(th.dataset.ddSort));
+        });
 
         // Body
         let html = '';
-        const colTotals = new Array(categories.length).fill(0);
+        const colTotals = new Array(visibleCats.length).fill(0);
         let grandTotal = 0;
 
-        for (const store of stores) {
-            let rowTotal = 0;
+        for (const store of visibleStores) {
             let row = `<tr><td class="col-name">${escapeHtml(store)}</td>`;
-            categories.forEach((cat, i) => {
-                const v = extract(byStoreCat[store]?.[cat]);
-                rowTotal += v;
-                colTotals[i] += v;
+            visibleCats.forEach((cat, i) => {
+                const v = rowValues[store][cat];
+                if (!isTickets) colTotals[i] += v;
                 row += `<td>${v ? fmt(v) : '<span class="cell-zero">--</span>'}</td>`;
             });
-            grandTotal += rowTotal;
-            row += `<td class="col-shaded"><strong>${rowTotal ? fmt(rowTotal) : '--'}</strong></td></tr>`;
+            if (!isTickets) grandTotal += rowTotals[store];
+            row += `<td class="col-shaded"><strong>${rowTotals[store] ? fmt(rowTotals[store]) : '--'}</strong></td></tr>`;
             html += row;
         }
         tbody.innerHTML = html;
 
         // Footer totals
+        // For tickets: column total = unique refs in that category across visible stores.
+        // Grand total = unique refs across visible cats & visible stores.
+        let visibleRefs = null;
         let foot = '<tr class="row-total"><td class="col-name"><strong>TOTAL</strong></td>';
-        colTotals.forEach(v => {
+        visibleCats.forEach((cat, i) => {
+            let v;
+            if (isTickets) {
+                const refs = new Set();
+                for (const store of visibleStores) {
+                    const bucket = byStoreCat[store]?.[cat];
+                    if (bucket && bucket.tickets) {
+                        for (const ref of bucket.tickets) refs.add(ref);
+                    }
+                }
+                v = refs.size;
+                if (!visibleRefs) visibleRefs = new Set();
+                for (const ref of refs) visibleRefs.add(ref);
+            } else {
+                v = colTotals[i];
+            }
             foot += `<td><strong>${v ? fmt(v) : '--'}</strong></td>`;
         });
-        foot += `<td class="col-shaded"><strong>${grandTotal ? fmt(grandTotal) : '--'}</strong></td></tr>`;
+        const totalCell = isTickets ? (visibleRefs ? visibleRefs.size : 0) : grandTotal;
+        foot += `<td class="col-shaded"><strong>${totalCell ? fmt(totalCell) : '--'}</strong></td></tr>`;
         tfoot.innerHTML = foot;
     }
 

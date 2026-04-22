@@ -808,6 +808,20 @@ body {
     display: none;
 }
 
+/* Available data range hint (below week-range label) */
+.available-weeks {
+    padding: 0.3rem 1.25rem;
+    font-size: 0.7rem;
+    color: var(--color-text-light);
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border-light);
+    font-style: italic;
+}
+
+.available-weeks:empty {
+    display: none;
+}
+
 /* Evolution chart toggle */
 .evo-chart-toggle {
     display: flex;
@@ -1361,6 +1375,7 @@ body {
 }
 
 .import-zone {
+    position: relative;
     border: 2px dashed var(--color-border);
     border-radius: var(--radius);
     padding: 1.5rem 1rem;
@@ -1374,6 +1389,106 @@ body {
     gap: 0.3rem;
 }
 
+/* Footer row with CSV download + info button */
+.import-zone-footer {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+}
+
+/* Info button + popover */
+.info-btn {
+    position: relative;
+    background: #dbeafe;
+    border: none;
+    padding: 3px;
+    width: 20px;
+    height: 20px;
+    color: var(--color-primary);
+    cursor: help;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.info-btn:hover,
+.info-btn:focus {
+    background: var(--color-primary);
+    color: #ffffff;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+.info-pop {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    right: -6px;
+    min-width: 240px;
+    max-width: 300px;
+    background: #1e293b;
+    color: #f1f5f9;
+    padding: 0.7rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    text-align: left;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(4px);
+    transition: opacity 0.15s, transform 0.15s;
+    z-index: 10;
+    line-height: 1.45;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-weight: 400;
+}
+
+.info-btn:hover .info-pop,
+.info-btn:focus .info-pop {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.info-pop-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.info-pop-section {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #fbbf24;
+    margin-top: 0.2rem;
+}
+
+.info-pop-section-first {
+    margin-top: 0;
+}
+
+.info-pop ul {
+    margin: 0;
+    padding-left: 1rem;
+    list-style: disc;
+}
+
+.info-pop li {
+    margin-bottom: 0.15rem;
+}
+
+.info-pop em {
+    font-style: normal;
+    color: #fbbf24;
+    font-weight: 600;
+}
+
 .import-zone:hover:not(.disabled) {
     border-color: var(--color-primary);
     box-shadow: var(--shadow);
@@ -1385,8 +1500,13 @@ body {
 }
 
 .import-zone.disabled {
-    opacity: 0.4;
     cursor: not-allowed;
+}
+
+.import-zone.disabled .import-zone-icon,
+.import-zone.disabled > strong,
+.import-zone.disabled > small {
+    opacity: 0.4;
 }
 
 .import-zone-icon {
@@ -1403,6 +1523,24 @@ body {
     font-size: 0.68rem;
     color: var(--color-text-light);
     line-height: 1.3;
+}
+
+.import-zone-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--color-primary);
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+
+.import-zone-link:hover {
+    background: var(--color-primary-light);
+    text-decoration: underline;
 }
 
 .drop-zone-hint {
@@ -1691,6 +1829,126 @@ tr:hover { background: #f8fafc; }
 .search-select-option.highlighted {
     background: var(--color-primary-light);
     color: var(--color-primary);
+}
+
+/* ===== MULTI-SELECT (checkbox dropdown) ===== */
+.multi-select {
+    position: relative;
+    display: inline-block;
+}
+
+.multi-select-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    font-size: 0.75rem;
+    cursor: pointer;
+    color: var(--color-text);
+    min-width: 140px;
+    justify-content: space-between;
+}
+
+.multi-select-trigger:hover {
+    border-color: var(--color-primary);
+}
+
+.multi-select-label {
+    font-weight: 500;
+}
+
+.multi-select-count {
+    color: var(--color-text-light);
+    font-size: 0.7rem;
+    margin-left: auto;
+}
+
+.multi-select-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 2px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    min-width: 240px;
+    max-width: 320px;
+    z-index: 50;
+    display: none;
+    padding: 0.5rem;
+}
+
+.multi-select-panel.open {
+    display: block;
+}
+
+.multi-select-search {
+    width: 100%;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    margin-bottom: 0.4rem;
+    box-sizing: border-box;
+}
+
+.multi-select-search:focus {
+    border-color: var(--color-primary);
+    outline: none;
+}
+
+.multi-select-all {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border-light);
+    margin-bottom: 0.25rem;
+    cursor: pointer;
+}
+
+.multi-select-list {
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.multi-select-option {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.35rem;
+    font-size: 0.72rem;
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.multi-select-option:hover {
+    background: var(--color-primary-light);
+}
+
+.multi-select-option input[type="checkbox"] {
+    flex-shrink: 0;
+}
+
+.multi-select-option-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.multi-select-footer {
+    border-top: 1px solid var(--color-border-light);
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+    display: flex;
+    justify-content: flex-end;
 }
 
 /* ===== UTILITY ===== */

@@ -150,19 +150,82 @@
                     <small>Operaciones de tienda</small>
                     <small class="drop-zone-hint">Peninsula y Baleares</small>
                     <input type="file" accept=".csv,.txt" hidden>
+                    <span class="import-zone-footer">
+                        <a class="import-zone-link" href="https://datastudio.google.com/u/0/reporting/b33c2e7f-e3ee-4b74-847e-26c97039152b/page/enNTD" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            Descargar CSV
+                        </a>
+                        <button type="button" class="info-btn" aria-label="Informacion sobre Baby Banking ES" onclick="event.stopPropagation()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            <span class="info-pop">
+                                <span class="info-pop-section info-pop-section-first">Como exportar</span>
+                                <span>Desde Looker, exporta el CSV completo del rango de fechas que quieras. No hace falta pre-filtrar nada: la herramienta se encarga de quedarse solo con los datos relevantes para los KPIs.</span>
+                                <span class="info-pop-section">Que se descarta al importar</span>
+                                <ul>
+                                    <li>Branch que contenga <em>RMA</em>, <em>ES Ecomdistribution</em> o <em>ES Ecommerce</em> (no son tiendas fisicas)</li>
+                                    <li>Type = <em>Transfer</em> (movimientos internos de stock y ordenes de test)</li>
+                                </ul>
+                                <span class="info-pop-section">Campos y duplicados</span>
+                                <span>Solo se guardan campos relevantes para KPIs. Si reimportas un archivo, las filas que ya existian se detectan por Order Number + precio + categoria y se omiten.</span>
+                            </span>
+                        </button>
+                    </span>
                 </div>
-                <div class="import-zone disabled" data-source="baby-banking-ic" title="Proximamente: pendiente resolver diferencias de formato con ES">
+                <div class="import-zone" data-source="baby-banking-ic">
                     <span class="import-zone-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
                     <strong>Baby Banking IC</strong>
-                    <small>Islas Canarias</small>
-                    <small class="drop-zone-hint">Proximamente</small>
-                    <input type="file" accept=".csv,.txt" hidden disabled>
+                    <small>Operaciones de tienda</small>
+                    <small class="drop-zone-hint">Islas Canarias</small>
+                    <input type="file" accept=".csv,.txt" hidden>
+                    <span class="import-zone-footer">
+                        <a class="import-zone-link" href="https://datastudio.google.com/u/0/reporting/252b8fc8-0caa-4424-abd7-eb8909e7f3f7/page/enNTD" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            Descargar CSV
+                        </a>
+                        <button type="button" class="info-btn" aria-label="Informacion sobre Baby Banking IC" onclick="event.stopPropagation()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            <span class="info-pop">
+                                <span class="info-pop-section info-pop-section-first">Como exportar</span>
+                                <span>Desde Looker, exporta el CSV completo del rango de fechas que quieras. No hace falta pre-filtrar nada: la herramienta se encarga de quedarse solo con los datos relevantes para los KPIs.</span>
+                                <span class="info-pop-section">Que se descarta al importar</span>
+                                <ul>
+                                    <li>Branch que contenga <em>RMA</em>, <em>ES Ecomdistribution</em> o <em>ES Ecommerce</em> (no son tiendas fisicas)</li>
+                                    <li>Type = <em>Transfer</em> (movimientos internos de stock y ordenes de test)</li>
+                                </ul>
+                                <span class="info-pop-section">Campos y duplicados</span>
+                                <span>Solo se guardan campos relevantes para KPIs. Si reimportas un archivo, las filas que ya existian se detectan por Order Number + precio + categoria y se omiten.</span>
+                            </span>
+                        </button>
+                    </span>
                 </div>
                 <div class="import-zone" data-source="ecom">
                     <span class="import-zone-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
                     <strong>Ecom Sales</strong>
                     <small>Cruza ordenes ecom con Baby Banking</small>
                     <input type="file" accept=".csv,.txt" hidden>
+                    <span class="import-zone-footer">
+                        <a class="import-zone-link" href="https://datastudio.google.com/reporting/d13c0592-0929-42a7-b70b-6b2916447f8d/page/udYtB?s=kvVelvrgbE0" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            Descargar CSV
+                        </a>
+                        <button type="button" class="info-btn" aria-label="Informacion sobre Ecom Sales" onclick="event.stopPropagation()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            <span class="info-pop">
+                                <span class="info-pop-section info-pop-section-first">Como exportar</span>
+                                <span>Desde Looker, <strong>filtra la region a ES e IC unicamente</strong> y selecciona el rango de fechas que quieras. Exporta el CSV completo — el resto de columnas las ignoramos.</span>
+                                <span class="info-pop-section">Que columnas se usan</span>
+                                <ul>
+                                    <li><em>Dispatch Date</em> (fecha de envio)</li>
+                                    <li><em>Epos Order ID</em> (referencia de la orden)</li>
+                                </ul>
+                                <span>El resto de columnas se ignoran. El matching de headers es flexible: busca por palabras clave, asi que pequeñas variaciones en el nombre no rompen la importacion.</span>
+                                <span class="info-pop-section">Como funciona</span>
+                                <span>Ecom <strong>no se guarda en la base de datos</strong>. Su lista de Order IDs se cruza contra los registros ya importados de Baby Banking (ES + IC). Las ordenes que coincidan se marcan como e-commerce, para poder filtrarlas en los dashboards.</span>
+                                <span class="info-pop-section">Cobertura</span>
+                                <span>Al importar se muestra una timeline con el rango de fechas cubierto por Ecom frente al de Baby Banking, para detectar huecos.</span>
+                            </span>
+                        </button>
+                    </span>
                 </div>
                 <div class="import-zone disabled" data-source="captacion">
                     <span class="import-zone-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
@@ -298,9 +361,9 @@
                     <h3 class="kpi-panel-title">Evolucion semanal</h3>
                     <div class="kpi-panel-filters">
                         <label class="filter-label">De W</label>
-                        <input type="number" id="evo-week-from" class="week-input" min="1" value="1">
+                        <input type="number" id="evo-week-from" class="week-input" min="1" value="">
                         <label class="filter-label">a W</label>
-                        <input type="number" id="evo-week-to" class="week-input" min="1" value="15">
+                        <input type="number" id="evo-week-to" class="week-input" min="1" value="">
                         <select id="evo-metric">
                             <optgroup label="Ventas">
                                 <option value="netSales">Ventas netas (&euro;)</option>
@@ -357,6 +420,7 @@
                     </div>
                 </div>
                 <div class="kpi-panel-week-range" id="kpi-panel-week-range"></div>
+                <div class="available-weeks" id="evo-available"></div>
 
                 <!-- Table -->
                 <div class="kpi-panel-body">
@@ -400,17 +464,18 @@
                     <h3 class="kpi-panel-title">Tiendas &times; KPIs</h3>
                     <div class="kpi-panel-filters">
                         <label class="filter-label">De W</label>
-                        <input type="number" id="dg-week-from" class="week-input" min="1" value="1">
+                        <input type="number" id="dg-week-from" class="week-input" min="1" value="">
                         <label class="filter-label">a W</label>
-                        <input type="number" id="dg-week-to" class="week-input" min="1" value="15">
+                        <input type="number" id="dg-week-to" class="week-input" min="1" value="">
                         <label class="toggle-switch" title="Excluir ordenes e-commerce">
-                            <input type="checkbox" id="dg-exclude-ecom" checked>
+                            <input type="checkbox" id="dg-exclude-ecom">
                             <span class="toggle-slider"></span>
                             <span class="toggle-label">Filtrar ecom</span>
                         </label>
                     </div>
                 </div>
                 <div class="kpi-panel-week-range" id="dg-week-range"></div>
+                <div class="available-weeks" id="dg-available"></div>
                 <div class="kpi-panel-body">
                     <div class="table-container">
                         <table class="kpi-table" id="dg-table">
@@ -435,14 +500,49 @@
                 <div class="kpi-panel-header">
                     <h3 class="kpi-panel-title">Tiendas &times; Categoria</h3>
                     <div class="kpi-panel-filters">
-                        <label class="filter-label">Semana</label>
-                        <input type="number" id="dd-week" class="week-input" min="1" value="1">
+                        <label class="filter-label">De W</label>
+                        <input type="number" id="dd-week-from" class="week-input" min="1" value="">
+                        <label class="filter-label">a W</label>
+                        <input type="number" id="dd-week-to" class="week-input" min="1" value="">
                         <select id="dd-metric">
                             <option value="netSales">Ventas netas (&euro;)</option>
                             <option value="units">Unidades vendidas</option>
                             <option value="tickets">Tickets</option>
                             <option value="buys">Compras (&euro;)</option>
                         </select>
+                        <div class="multi-select" data-key="categories">
+                            <button type="button" class="multi-select-trigger" id="dd-cat-trigger">
+                                <span class="multi-select-label">Categorías</span>
+                                <span class="multi-select-count" id="dd-cat-count">--</span>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="multi-select-panel" id="dd-cat-panel">
+                                <input type="text" class="multi-select-search" id="dd-cat-search" placeholder="Buscar...">
+                                <label class="multi-select-all">
+                                    <input type="checkbox" id="dd-cat-all">
+                                    <span>Seleccionar todas</span>
+                                </label>
+                                <div class="multi-select-list" id="dd-cat-list"></div>
+                                <div class="multi-select-footer">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="dd-cat-top5">Top 5 por metrica</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="multi-select" data-key="stores">
+                            <button type="button" class="multi-select-trigger" id="dd-store-trigger">
+                                <span class="multi-select-label">Tiendas</span>
+                                <span class="multi-select-count" id="dd-store-count">--</span>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="multi-select-panel" id="dd-store-panel">
+                                <input type="text" class="multi-select-search" id="dd-store-search" placeholder="Buscar...">
+                                <label class="multi-select-all">
+                                    <input type="checkbox" id="dd-store-all">
+                                    <span>Seleccionar todas</span>
+                                </label>
+                                <div class="multi-select-list" id="dd-store-list"></div>
+                            </div>
+                        </div>
                         <label class="toggle-switch" title="Excluir ordenes e-commerce">
                             <input type="checkbox" id="dd-exclude-ecom" checked>
                             <span class="toggle-slider"></span>
@@ -451,6 +551,7 @@
                     </div>
                 </div>
                 <div class="kpi-panel-week-range" id="dd-week-range"></div>
+                <div class="available-weeks" id="dd-available"></div>
                 <div class="kpi-panel-body">
                     <div class="table-container">
                         <table class="kpi-table" id="dd-table">

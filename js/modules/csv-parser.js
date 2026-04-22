@@ -9,17 +9,24 @@
 const CSVParser = (() => {
 
     // Default column mapping: exact CSV header -> internal field name
-    // Keys are matched case-insensitively against the CSV headers
+    // Keys are matched case-insensitively against the CSV headers.
+    // Covers both Baby Banking ES (Branch, Order Dt, Box ID, Box Name, Category)
+    // and Baby Banking IC (branchname, order_date, box_id, box_name, boxcategory).
     const DEFAULT_MAPPING = {
         'branch': 'store',
+        'branchname': 'store',
         'order number': 'reference',
         'staff': 'staff',
         'order dt': 'date',
+        'order_date': 'date',
         'transaction type': 'type',
         'box id': 'sku',
+        'box_id': 'sku',
         'box name': 'product',
+        'box_name': 'product',
         'serialno': 'serial',
         'category': 'category',
+        'boxcategory': 'category',
         'till no': 'till',
         'quantity': 'quantity',
         'price': 'price'
@@ -177,10 +184,12 @@ const CSVParser = (() => {
             return null;
         }
 
-        // Discard non-store departments (RMA centres, ecom warehouses)
+        // Discard non-store departments (RMA centres, ecom warehouses).
+        // ES uses "ES Ecomdistribution"/"ES Ecommerce"; IC uses the same pattern
+        // with "IC " prefix, so we match by substring.
         if (record.store) {
             const s = record.store.trim().toLowerCase();
-            if (s.includes('rma') || s === 'es ecomdistribution' || s === 'es ecommerce') {
+            if (s.includes('rma') || s.includes('ecomdistribution') || s.includes('ecommerce')) {
                 return null;
             }
         }

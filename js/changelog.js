@@ -4,6 +4,23 @@
  */
 const Changelog = [
     {
+        date: '23/04/2026 (sesion 6)',
+        items: [
+            { type: 'new', text: 'Activado importador Baby Banking IC (Islas Canarias): parser reconoce headers IC (branchname, order_date, box_id, box_name, boxcategory)' },
+            { type: 'change', text: 'Filtro de branches no-tienda (RMA, Ecomdistribution, Ecommerce) ahora es generico: captura variantes ES e IC' },
+            { type: 'new', text: 'Drop zone de Baby Banking IC con link a Looker (dataset IC) e info sobre el proceso de importacion' },
+            { type: 'new', text: 'Drop zone de Ecom Sales con link a Looker e info (incluye instruccion de filtrar region a ES+IC al exportar)' },
+            { type: 'fix', text: 'Barra de cobertura de Ecom ahora muestra solo el rango efectivamente aplicado (interseccion con BB ES+IC). Los dias de Ecom sin BB que cruzar no cuentan como cobertura' },
+            { type: 'new', text: 'Label "Datos disponibles" en los 3 dashboards: indica desde que W/año hasta cual hay datos cargados, con fechas de referencia' },
+            { type: 'change', text: 'Auto-rellenado de rango de semanas: al abrir un dashboard por primera vez, los inputs se ajustan al rango de datos disponibles en lugar de 1-15 hardcoded' },
+            { type: 'change', text: 'Vista detalle: selector de semana unica sustituido por rango (De W / a W). Suma metricas a lo largo del rango y muestra TOTAL por fila/columna. Tickets se contabilizan con Set de referencias unicas para evitar inflar totales cuando una orden abarca varias categorias' },
+            { type: 'new', text: 'Vista detalle: filtros multi-select con checkbox para categorias y tiendas. Por defecto se muestran las 5 categorias top de la metrica activa; si cambias de metrica y no has tocado el filtro, se recalcula el top 5. Boton "Top 5 por metrica" para resetear la seleccion' },
+            { type: 'new', text: 'Vistas general y detalle: click en cabecera de columna para ordenar. Primer click descendente, clicks sucesivos alternan' },
+            { type: 'change', text: 'Vista general: filtro "Filtrar ecom" desactivado por defecto (antes venia activado)' },
+            { type: 'fix', text: 'Performance: cache en memoria de la tabla de operaciones. Antes cada click de filtro/sort/cambio de metrica releia TODA la BD. Ahora solo se lee al arrancar o tras un import/restore/reset. Mejora drastica en interacciones (~10-20x mas rapido)' },
+        ]
+    },
+    {
         date: '22/04/2026 (sesion 5 - parte 2)',
         items: [
             { type: 'change', text: 'Nombre de la app: KPI Tool 2026 -> CapiMetrics 2026 (topbar, titulo, backups). BD interna conserva el nombre anterior por compatibilidad' },

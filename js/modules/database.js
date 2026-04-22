@@ -5,6 +5,21 @@
 const Database = (() => {
     let db;
 
+    // In-memory cache of the full operations table. Populated on first read,
+    // invalidated on any mutation (bulk add, ecom tagging, bulk restore, clear).
+    // The returned array is shared — callers must not mutate it in place.
+    let opsCache = null;
+
+    function invalidateOpsCache() {
+        opsCache = null;
+    }
+
+    async function getAllOperations() {
+        if (opsCache) return opsCache;
+        opsCache = await db.operations.toArray();
+        return opsCache;
+    }
+
     function init() {
         db = new Dexie('KPITool2026');
 
@@ -70,6 +85,7 @@ const Database = (() => {
             if (onProgress) onProgress(added, records.length);
         }
 
+        invalidateOpsCache();
         return added;
     }
 
@@ -118,6 +134,7 @@ const Database = (() => {
             if (onProgress) onProgress(Math.min(i + BATCH, refs.length), refs.length);
         }
 
+        if (tagged > 0) invalidateOpsCache();
         const notFound = refs.length - matchedRefs.size;
         return { tagged, alreadyTagged, notFound, ecomDateFrom: ecomDates[0], ecomDateTo: ecomDates[ecomDates.length - 1] };
     }
@@ -127,9 +144,8 @@ const Database = (() => {
      * and which portions have been cross-referenced with ecom.
      */
     async function getEcomCoverage() {
-        const allBB = await db.operations
-            .filter(r => r.source && r.source.startsWith('baby-banking'))
-            .toArray();
+        const ops = await getAllOperations();
+        const allBB = ops.filter(r => r.source && r.source.startsWith('baby-banking'));
 
         if (!allBB.length) return null;
 
@@ -223,27 +239,61 @@ const Database = (() => {
     async function getDateRangeBySource() {
         const result = {};
 
-        // Baby Banking ES + IC: from operations table
-        for (const src of ['baby-banking', 'baby-banking-ic']) {
-            const sorted = await db.operations.where('source').equals(src).sortBy('date');
-            if (sorted.length > 0) {
-                const first = sorted.find(r => r.date);
-                const last = [...sorted].reverse().find(r => r.date);
-                if (first && last) result[src] = { from: first.date, to: last.date };
+        // Baby Banking ES + IC: compute min/max dates from the cached operations
+        // array in one pass (avoids two full scans + sortBy per source).
+        const ops = await getAllOperations();
+        for (const r of ops) {
+            if (!r.source || !r.date) continue;
+            if (r.source !== 'baby-banking' && r.source !== 'baby-banking-ic') continue;
+            const cur = result[r.source];
+            if (!cur) {
+                result[r.source] = { from: r.date, to: r.date };
+            } else {
+                if (r.date < cur.from) cur.from = r.date;
+                if (r.date > cur.to) cur.to = r.date;
             }
         }
 
-        // Ecom: from imports table (ecom records aren't stored in operations)
+        // Ecom: shown as the portion of imported ecom that intersects with BB
+        // (ES union IC). Ecom refs outside BB's range produce no cross-reference
+        // tagging, so they shouldn't count as coverage. If there is no BB, ecom
+        // has no applicable coverage and is omitted.
         const ecomImports = await db.imports.where('source').equals('ecom').toArray();
         if (ecomImports.length > 0) {
             const froms = ecomImports.map(i => i.dateFrom).filter(Boolean).sort();
             const tos = ecomImports.map(i => i.dateTo).filter(Boolean).sort();
             if (froms.length && tos.length) {
-                result['ecom'] = { from: froms[0], to: tos[tos.length - 1] };
+                const ecomFrom = froms[0];
+                const ecomTo = tos[tos.length - 1];
+                const bbRanges = [result['baby-banking'], result['baby-banking-ic']].filter(Boolean);
+                if (bbRanges.length) {
+                    const bbFrom = bbRanges.map(r => r.from).sort()[0];
+                    const bbTo = bbRanges.map(r => r.to).sort()[bbRanges.length - 1];
+                    const clipFrom = ecomFrom > bbFrom ? ecomFrom : bbFrom;
+                    const clipTo = ecomTo < bbTo ? ecomTo : bbTo;
+                    if (clipFrom <= clipTo) {
+                        result['ecom'] = { from: clipFrom, to: clipTo };
+                    }
+                }
             }
         }
 
         return result;
+    }
+
+    /**
+     * Compute the combined available data range across Baby Banking ES + IC.
+     * Returns null if there is no BB data.
+     * Week numbers are derived by the caller (app.js has access to KPIEngine);
+     * this function only returns the date bounds.
+     */
+    async function getAvailableBBDateRange() {
+        const ranges = await getDateRangeBySource();
+        const bbRanges = [ranges['baby-banking'], ranges['baby-banking-ic']].filter(Boolean);
+        if (!bbRanges.length) return null;
+        const dateMin = bbRanges.map(r => r.from).sort()[0];
+        const dateMax = bbRanges.map(r => r.to).sort()[bbRanges.length - 1];
+        return { dateMin, dateMax };
     }
 
     async function getDistinctValues(field) {
@@ -334,6 +384,7 @@ const Database = (() => {
     }
 
     async function importAll(data, onProgress) {
+        invalidateOpsCache();
         await db.operations.clear();
         await db.imports.clear();
         await db.settings.clear();
@@ -350,6 +401,7 @@ const Database = (() => {
     }
 
     async function clearAll() {
+        invalidateOpsCache();
         db.close();
         await Dexie.delete('KPITool2026');
         init();
@@ -358,6 +410,8 @@ const Database = (() => {
 
     return {
         init,
+        getAllOperations,
+        invalidateOpsCache,
         bulkAddOperations,
         logImport,
         getExistingFingerprints,
@@ -366,6 +420,7 @@ const Database = (() => {
         getRecordCount,
         getDateRange,
         getDateRangeBySource,
+        getAvailableBBDateRange,
         getDistinctValues,
         queryOperations,
         getOperationsForKPI,
