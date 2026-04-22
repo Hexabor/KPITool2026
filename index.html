@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KPI Tool 2026</title>
+    <title>CapiMetrics 2026</title>
     <link rel="stylesheet" href="css/styles.css">
     <script src="https://unpkg.com/dexie@3.2.6/dist/dexie.min.js"></script>
     <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
@@ -18,7 +18,7 @@
     <!-- ===== TOP BAR ===== -->
     <header class="topbar">
         <div class="topbar-left">
-            <span class="topbar-title">KPI Tool 2026</span>
+            <span class="topbar-title">CapiMetrics 2026</span>
             <span class="topbar-badge">v1.0</span>
             <button class="topbar-changelog-btn" id="btn-changelog">Novedades</button>
             <span class="topbar-badge" id="db-status-badge">DB: --</span>
@@ -46,135 +46,87 @@
 
         <!-- HOME -->
         <section id="section-home" class="section active">
-            <div class="home-greeting">
-                <h1 id="home-greeting-text">Buenos dias</h1>
-                <p class="home-subtitle">
-                    <span id="home-store-name">--</span>
-                    <span class="separator">|</span>
-                    Estas en la <strong>semana <span id="home-week-num">--</span></strong> de 2026
-                </p>
+            <div class="home-logo-wrap">
+                <img src="assets/logo.png" alt="CapiMetrics" class="home-logo" onerror="this.style.display='none'">
             </div>
 
-            <!-- KPI BUTTONS -->
-            <div class="home-kpi-buttons">
-                <h4 class="home-col-label">KPIs</h4>
-                <div class="kpi-button-grid">
-                    <button class="kpi-card-v" data-action="go-kpi-crosssell">
-                        <span class="kpi-card-name">Ventas</span>
-                        <span class="kpi-card-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
-                        <ul class="kpi-card-details">
-                            <li>Tickets</li>
-                            <li>Articulos</li>
-                            <li>SV+D1</li>
-                        </ul>
+            <!-- DASHBOARD VIEWS (top) -->
+            <div class="home-dashboard-buttons">
+                <h4 class="home-col-label">VISTAS DE TIENDA</h4>
+                <div class="dash-button-grid">
+                    <button class="dash-card" data-action="go-dash-general">
+                        <span class="dash-card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>
+                        <span class="dash-card-text">
+                            <span class="dash-card-name">Vista general</span>
+                            <small class="dash-card-hint">Tiendas &times; KPIs</small>
+                        </span>
                     </button>
-                    <button class="kpi-card-v disabled" disabled>
-                        <span class="kpi-card-name">Compras</span>
-                        <span class="kpi-card-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v20M2 12h20"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg></span>
-                        <small class="kpi-card-soon">Proximamente</small>
+                    <button class="dash-card" data-action="go-dash-detail">
+                        <span class="dash-card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span>
+                        <span class="dash-card-text">
+                            <span class="dash-card-name">Vista detalle</span>
+                            <small class="dash-card-hint">Tiendas &times; Categoria</small>
+                        </span>
                     </button>
-                    <button class="kpi-card-v" data-action="go-kpi-mobiles">
-                        <span class="kpi-card-name">Moviles</span>
-                        <span class="kpi-card-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span>
-                        <ul class="kpi-card-details">
-                            <li>Unidades</li>
-                            <li>%Geles</li>
-                            <li>%Basics</li>
-                        </ul>
-                    </button>
-                    <button class="kpi-card-v disabled" disabled>
-                        <span class="kpi-card-name">Socios</span>
-                        <span class="kpi-card-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-                        <small class="kpi-card-soon">Proximamente</small>
-                    </button>
-                    <button class="kpi-card-v disabled" disabled>
-                        <span class="kpi-card-name">KPI 5</span>
-                        <span class="kpi-card-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
-                        <small class="kpi-card-soon">Proximamente</small>
-                    </button>
-                    <button class="kpi-card-v disabled" disabled>
-                        <span class="kpi-card-name">KPI 6</span>
-                        <span class="kpi-card-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
-                        <small class="kpi-card-soon">Proximamente</small>
-                    </button>
-                    <button class="kpi-card-v disabled" disabled>
-                        <span class="kpi-card-name">KPI 7</span>
-                        <span class="kpi-card-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
-                        <small class="kpi-card-soon">Proximamente</small>
-                    </button>
-                    <button class="kpi-card-v disabled" disabled>
-                        <span class="kpi-card-name">KPI 8</span>
-                        <span class="kpi-card-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
-                        <small class="kpi-card-soon">Proximamente</small>
+                    <button class="dash-card" data-action="go-dash-store">
+                        <span class="dash-card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 3 3 21 21 21"/><polyline points="7 14 11 10 15 12 21 6"/></svg></span>
+                        <span class="dash-card-text">
+                            <span class="dash-card-name">Vista tienda/empleado</span>
+                            <small class="dash-card-hint">Evolucion semanal por KPI</small>
+                        </span>
                     </button>
                 </div>
             </div>
 
-            <!-- Home grid: 3 columns -->
-            <div class="home-grid">
-
-                <!-- LEFT COLUMN -->
-                <div class="home-col">
-                    <h4 class="home-col-label">DATOS</h4>
-                    <div class="home-card clickable" data-action="go-import">
-                        <div class="home-card-icon import-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        </div>
-                        <div>
-                            <strong>Importar CSV</strong>
-                            <small>Cargar datos de Looker</small>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- CENTER COLUMN: Coverage -->
-                <div class="home-col home-col-center">
-                    <h4 class="home-col-label">COBERTURA</h4>
+            <!-- COBERTURA + DATA en 2 columnas -->
+            <div class="home-bottom-grid">
+                <div class="home-coverage-section">
+                    <h4 class="home-col-label">COBERTURA <span class="home-col-meta" id="coverage-store-count"></span></h4>
                     <div class="home-summary-card">
                         <div id="coverage-bars"></div>
                         <div class="coverage-empty hidden" id="coverage-empty">Sin datos importados</div>
                     </div>
                 </div>
 
-                <!-- RIGHT COLUMN -->
-                <div class="home-col">
-                    <h4 class="home-col-label">HERRAMIENTAS</h4>
-                    <div class="home-card clickable" data-action="go-settings">
-                        <div class="home-card-icon settings-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09"/></svg>
-                        </div>
-                        <div>
-                            <strong>Configuracion</strong>
-                            <small>Calendario y parametros</small>
-                        </div>
-                    </div>
-                    <div class="home-card clickable" data-action="export-json">
-                        <div class="home-card-icon export-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        </div>
-                        <div>
-                            <strong>Exportar</strong>
-                            <small>Backup comprimido (.gz)</small>
-                        </div>
-                    </div>
-                    <div class="home-card clickable" data-action="import-json">
-                        <div class="home-card-icon restore-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        </div>
-                        <div>
-                            <strong>Importar backup</strong>
-                            <small>Restaurar .gz o .json</small>
-                        </div>
-                    </div>
-                    <input type="file" id="json-input" accept=".json,.json.gz,.gz" hidden>
-                    <div class="home-card disabled" title="Proximamente: sincronizacion con Google Drive" style="margin-top:0.5rem;">
-                        <div class="home-card-icon drive-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
-                        </div>
-                        <div>
-                            <strong>Google Drive</strong>
-                            <small>Proximamente</small>
-                        </div>
+                <div class="home-data-section">
+                    <h4 class="home-col-label">DATA</h4>
+                    <div class="dash-button-col">
+                        <button class="dash-card" data-action="go-import">
+                            <span class="dash-card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+                            <span class="dash-card-text">
+                                <span class="dash-card-name">Importar CSV</span>
+                                <small class="dash-card-hint">Cargar datos de Looker</small>
+                            </span>
+                        </button>
+                        <button class="dash-card dash-card-amber" data-action="go-settings">
+                            <span class="dash-card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09"/></svg></span>
+                            <span class="dash-card-text">
+                                <span class="dash-card-name">Configuracion</span>
+                                <small class="dash-card-hint">Calendario y parametros</small>
+                            </span>
+                        </button>
+                        <button class="dash-card dash-card-violet" data-action="export-json">
+                            <span class="dash-card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
+                            <span class="dash-card-text">
+                                <span class="dash-card-name">Exportar</span>
+                                <small class="dash-card-hint">Backup comprimido (.gz)</small>
+                            </span>
+                        </button>
+                        <button class="dash-card dash-card-pink" data-action="import-json">
+                            <span class="dash-card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+                            <span class="dash-card-text">
+                                <span class="dash-card-name">Importar backup</span>
+                                <small class="dash-card-hint">Restaurar .gz o .json</small>
+                            </span>
+                        </button>
+                        <input type="file" id="json-input" accept=".json,.json.gz,.gz" hidden>
+                        <button class="dash-card dash-card-green disabled" disabled title="Proximamente: sincronizacion con Google Drive">
+                            <span class="dash-card-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
+                            <span class="dash-card-text">
+                                <span class="dash-card-name">Google Drive</span>
+                                <small class="dash-card-hint">Proximamente</small>
+                            </span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -196,8 +148,15 @@
                     <span class="import-zone-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
                     <strong>Baby Banking ES</strong>
                     <small>Operaciones de tienda</small>
-                    <small class="drop-zone-hint">Datos globales (todas las tiendas)</small>
+                    <small class="drop-zone-hint">Peninsula y Baleares</small>
                     <input type="file" accept=".csv,.txt" hidden>
+                </div>
+                <div class="import-zone disabled" data-source="baby-banking-ic" title="Proximamente: pendiente resolver diferencias de formato con ES">
+                    <span class="import-zone-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+                    <strong>Baby Banking IC</strong>
+                    <small>Islas Canarias</small>
+                    <small class="drop-zone-hint">Proximamente</small>
+                    <input type="file" accept=".csv,.txt" hidden disabled>
                 </div>
                 <div class="import-zone" data-source="ecom">
                     <span class="import-zone-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
@@ -205,16 +164,17 @@
                     <small>Cruza ordenes ecom con Baby Banking</small>
                     <input type="file" accept=".csv,.txt" hidden>
                 </div>
-                <div class="import-zone disabled" data-source="attachment">
-                    <span class="import-zone-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>
-                    <strong>Attachment</strong>
-                    <small>Proximamente</small>
-                    <input type="file" accept=".csv,.txt" hidden disabled>
-                </div>
                 <div class="import-zone disabled" data-source="captacion">
                     <span class="import-zone-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
                     <strong>Captacion</strong>
                     <small>Proximamente</small>
+                    <input type="file" accept=".csv,.txt" hidden disabled>
+                </div>
+                <div class="import-zone disabled" data-source="stocks" title="Proximamente: exportacion de stock desde AIO">
+                    <span class="import-zone-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+                    <strong>Stocks</strong>
+                    <small>Desde AIO</small>
+                    <small class="drop-zone-hint">Proximamente</small>
                     <input type="file" accept=".csv,.txt" hidden disabled>
                 </div>
             </div>
@@ -326,10 +286,10 @@
                 <p>Proximamente. La sincronizacion con Google Drive se implementara en una futura version.</p>
             </div>
         </section>
-        <!-- KPI: MOBILES -->
-        <section id="section-kpi-mobiles" class="section hidden">
+        <!-- DASHBOARD: STORE / STAFF (evolucion por KPI) -->
+        <section id="section-dash-store" class="section hidden">
             <div class="section-header">
-                <h2>Moviles</h2>
+                <h2>Vista tienda/empleado</h2>
                 <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
             </div>
 
@@ -342,15 +302,33 @@
                         <label class="filter-label">a W</label>
                         <input type="number" id="evo-week-to" class="week-input" min="1" value="15">
                         <select id="evo-metric">
-                            <option value="mobiles">Moviles (uds)</option>
-                            <option value="mobilesTotal">Moviles (&euro;)</option>
-                            <option value="services">Protectores de gel</option>
-                            <option value="pctServices">% Gel/Movil</option>
-                            <option value="basics">Basics</option>
-                            <option value="pctBasics">% Basics/Movil</option>
-                            <option value="pctCombo">% Combo (gel+basics)/Movil</option>
+                            <optgroup label="Ventas">
+                                <option value="netSales">Ventas netas (&euro;)</option>
+                                <option value="grossSales">Ventas brutas (&euro;)</option>
+                                <option value="refundsAmount">Refunds (&euro;)</option>
+                                <option value="totalItems">Articulos vendidos</option>
+                                <option value="tickets">Tickets</option>
+                                <option value="multiTickets">Tickets multiples</option>
+                                <option value="pctMulti">% Venta complementaria</option>
+                                <option value="avgItems">Media articulos/ticket</option>
+                            </optgroup>
+                            <optgroup label="Moviles">
+                                <option value="mobiles">Moviles (uds)</option>
+                                <option value="mobilesTotal">Moviles (&euro;)</option>
+                                <option value="services">Protectores de gel</option>
+                                <option value="pctServices">% Gel/Movil</option>
+                                <option value="basics">Basics</option>
+                                <option value="pctBasics">% Basics/Movil</option>
+                                <option value="pctCombo">% Combo (gel+basics)/Movil</option>
+                            </optgroup>
+                            <optgroup label="Compras">
+                                <option value="buys">Compras (&euro;)</option>
+                                <option value="cashBuys">Cash buys (&euro;)</option>
+                                <option value="exchanges">Exchanges (&euro;)</option>
+                                <option value="pctVale">% Vale</option>
+                            </optgroup>
                         </select>
-                        <input type="number" id="evo-min-ops" class="min-ops-input" min="1" value="10" placeholder="Min" title="Minimo de moviles para incluir en ranking" disabled>
+                        <input type="number" id="evo-min-ops" class="min-ops-input" min="1" value="10" placeholder="Min" title="Minimo de operaciones para incluir en ranking porcentual" disabled>
                         <select id="evo-scope">
                             <option value="staff">Por empleado</option>
                             <option value="store">Por tienda</option>
@@ -411,84 +389,82 @@
             </div>
         </section>
 
-        <!-- VENTA COMPLEMENTARIA -->
-        <section id="section-kpi-crosssell" class="section hidden">
+        <!-- DASHBOARD: GENERAL (Tiendas x KPIs) -->
+        <section id="section-dash-general" class="section hidden">
             <div class="section-header">
-                <h2>Ventas</h2>
+                <h2>Vista general</h2>
                 <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
             </div>
-
             <div class="kpi-panel">
                 <div class="kpi-panel-header">
-                    <h3 class="kpi-panel-title">Evolucion semanal</h3>
+                    <h3 class="kpi-panel-title">Tiendas &times; KPIs</h3>
                     <div class="kpi-panel-filters">
                         <label class="filter-label">De W</label>
-                        <input type="number" id="cs-week-from" class="week-input" min="1" value="1">
+                        <input type="number" id="dg-week-from" class="week-input" min="1" value="1">
                         <label class="filter-label">a W</label>
-                        <input type="number" id="cs-week-to" class="week-input" min="1" value="15">
-                        <select id="cs-metric">
-                            <option value="totalItems">Articulos vendidos</option>
-                            <option value="revenue">Facturacion (&euro;)</option>
-                            <option value="totalTickets">Tickets totales</option>
-                            <option value="multiCount">Ventas multiples</option>
-                            <option value="pctMulti">% Venta complementaria</option>
-                            <option value="avgItems">Media articulos/ticket</option>
-                        </select>
-                        <input type="number" id="cs-min-ops" class="min-ops-input" min="1" value="10" placeholder="Min" title="Minimo de tickets para incluir en ranking" disabled>
-                        <select id="cs-scope">
-                            <option value="staff">Por empleado</option>
-                            <option value="store">Por tienda</option>
-                        </select>
-                        <select id="cs-top-n">
-                            <option value="all" selected>Todos</option>
-                            <option value="3">Top 3</option>
-                            <option value="5">Top 5</option>
-                            <option value="10">Top 10</option>
-                            <option value="20">Top 20</option>
-                        </select>
-                        <div class="search-select" id="cs-store-wrap">
-                            <input type="text" class="search-select-input" id="cs-store" placeholder="Todas las tiendas" value="">
-                            <div class="search-select-dropdown" id="cs-store-list"></div>
-                        </div>
+                        <input type="number" id="dg-week-to" class="week-input" min="1" value="15">
                         <label class="toggle-switch" title="Excluir ordenes e-commerce">
-                            <input type="checkbox" id="cs-exclude-ecom" checked>
+                            <input type="checkbox" id="dg-exclude-ecom" checked>
                             <span class="toggle-slider"></span>
                             <span class="toggle-label">Filtrar ecom</span>
                         </label>
-                        <label class="toggle-switch" title="Unificar empleados que aparecen en varias tiendas">
-                            <input type="checkbox" id="cs-merge-stores">
-                            <span class="toggle-slider"></span>
-                            <span class="toggle-label">Unificar</span>
-                        </label>
                     </div>
                 </div>
-                <div class="kpi-panel-week-range" id="cs-week-range"></div>
-
+                <div class="kpi-panel-week-range" id="dg-week-range"></div>
                 <div class="kpi-panel-body">
                     <div class="table-container">
-                        <table class="kpi-table" id="cs-table">
-                            <thead id="cs-thead"><tr><th>--</th></tr></thead>
-                            <tbody id="cs-tbody">
-                                <tr><td class="empty-msg">Selecciona semanas para ver la evolucion.</td></tr>
+                        <table class="kpi-table" id="dg-table">
+                            <thead id="dg-thead"></thead>
+                            <tbody id="dg-tbody">
+                                <tr><td class="empty-msg">Selecciona una semana.</td></tr>
                             </tbody>
-                            <tfoot id="cs-tfoot"></tfoot>
+                            <tfoot id="dg-tfoot"></tfoot>
                         </table>
-                    </div>
-                </div>
-
-                <div class="evo-chart-toggle">
-                    <button class="btn btn-secondary btn-sm" id="btn-toggle-cs-chart">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                        Grafico
-                    </button>
-                </div>
-                <div class="evo-chart-section collapsed" id="cs-chart-section">
-                    <div class="evo-chart-container">
-                        <canvas id="cs-chart"></canvas>
                     </div>
                 </div>
             </div>
         </section>
+
+        <!-- DASHBOARD: DETAIL (Tiendas x Categoria) -->
+        <section id="section-dash-detail" class="section hidden">
+            <div class="section-header">
+                <h2>Vista detalle</h2>
+                <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
+            </div>
+            <div class="kpi-panel">
+                <div class="kpi-panel-header">
+                    <h3 class="kpi-panel-title">Tiendas &times; Categoria</h3>
+                    <div class="kpi-panel-filters">
+                        <label class="filter-label">Semana</label>
+                        <input type="number" id="dd-week" class="week-input" min="1" value="1">
+                        <select id="dd-metric">
+                            <option value="netSales">Ventas netas (&euro;)</option>
+                            <option value="units">Unidades vendidas</option>
+                            <option value="tickets">Tickets</option>
+                            <option value="buys">Compras (&euro;)</option>
+                        </select>
+                        <label class="toggle-switch" title="Excluir ordenes e-commerce">
+                            <input type="checkbox" id="dd-exclude-ecom" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Filtrar ecom</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="kpi-panel-week-range" id="dd-week-range"></div>
+                <div class="kpi-panel-body">
+                    <div class="table-container">
+                        <table class="kpi-table" id="dd-table">
+                            <thead id="dd-thead"></thead>
+                            <tbody id="dd-tbody">
+                                <tr><td class="empty-msg">Selecciona una semana.</td></tr>
+                            </tbody>
+                            <tfoot id="dd-tfoot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
     </main>
 
     <!-- Changelog modal -->

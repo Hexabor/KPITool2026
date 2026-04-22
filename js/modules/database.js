@@ -76,6 +76,7 @@ const Database = (() => {
     /**
      * Cross-reference ecom orders: mark baby-banking records whose reference
      * matches an ecom order as channel='ecom'.
+     * Matches against both baby-banking (ES) and baby-banking-ic (IC).
      * Returns { tagged, alreadyTagged, notFound } counts.
      */
     async function crossReferenceEcom(ecomRecords, onProgress) {
@@ -85,7 +86,7 @@ const Database = (() => {
         // Build a date lookup from ecom records (for metadata)
         const ecomDates = ecomRecords.map(r => r.date).filter(Boolean).sort();
 
-        // Find all baby-banking records matching these references
+        // Find all baby-banking (ES + IC) records matching these references
         const BATCH = 500;
         let tagged = 0;
         let alreadyTagged = 0;
@@ -96,7 +97,7 @@ const Database = (() => {
             const matches = await db.operations
                 .where('reference')
                 .anyOf(chunk)
-                .filter(r => r.source === 'baby-banking')
+                .filter(r => r.source && r.source.startsWith('baby-banking'))
                 .toArray();
 
             const ids = [];
@@ -122,12 +123,12 @@ const Database = (() => {
     }
 
     /**
-     * Get ecom coverage info: date ranges for baby-banking data
+     * Get ecom coverage info: date ranges for baby-banking data (ES + IC)
      * and which portions have been cross-referenced with ecom.
      */
     async function getEcomCoverage() {
         const allBB = await db.operations
-            .filter(r => r.source === 'baby-banking')
+            .filter(r => r.source && r.source.startsWith('baby-banking'))
             .toArray();
 
         if (!allBB.length) return null;
@@ -222,12 +223,14 @@ const Database = (() => {
     async function getDateRangeBySource() {
         const result = {};
 
-        // Baby Banking: from operations table
-        const bbSorted = await db.operations.where('source').equals('baby-banking').sortBy('date');
-        if (bbSorted.length > 0) {
-            const first = bbSorted.find(r => r.date);
-            const last = [...bbSorted].reverse().find(r => r.date);
-            if (first && last) result['baby-banking'] = { from: first.date, to: last.date };
+        // Baby Banking ES + IC: from operations table
+        for (const src of ['baby-banking', 'baby-banking-ic']) {
+            const sorted = await db.operations.where('source').equals(src).sortBy('date');
+            if (sorted.length > 0) {
+                const first = sorted.find(r => r.date);
+                const last = [...sorted].reverse().find(r => r.date);
+                if (first && last) result[src] = { from: first.date, to: last.date };
+            }
         }
 
         // Ecom: from imports table (ecom records aren't stored in operations)

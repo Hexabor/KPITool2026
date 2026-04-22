@@ -1,5 +1,5 @@
 /* ============================================
-   KPI Tool 2026 - Professional Dashboard
+   CapiMetrics 2026 - Professional Dashboard
    ============================================ */
 
 :root {
@@ -197,6 +197,11 @@ body {
     color: #b45309;
 }
 
+.changelog-tag.change {
+    background: #ede9fe;
+    color: #6d28d9;
+}
+
 /* ===== SIDEBAR ===== */
 .sidebar {
     position: fixed;
@@ -265,7 +270,21 @@ body {
     font-size: 0.8rem;
 }
 
-/* ===== HOME: GREETING ===== */
+/* ===== HOME: LOGO ===== */
+.home-logo-wrap {
+    text-align: center;
+    margin-bottom: 1.6rem;
+}
+
+.home-logo {
+    max-width: 220px;
+    width: 100%;
+    height: auto;
+    display: inline-block;
+    mix-blend-mode: darken;
+}
+
+/* Legacy greeting (retirado, pero mantenemos clases por si algun dia) */
 .home-greeting {
     text-align: center;
     margin-bottom: 2.5rem;
@@ -282,6 +301,15 @@ body {
     color: var(--color-text-light);
 }
 
+.home-col-meta {
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--color-text-light);
+    margin-left: 0.5rem;
+    font-size: 0.72rem;
+}
+
 .home-subtitle .separator {
     margin: 0 0.5rem;
     color: var(--color-border);
@@ -292,7 +320,7 @@ body {
     display: grid;
     grid-template-columns: 1fr 1.4fr 1fr;
     gap: 2rem;
-    max-width: 1100px;
+    max-width: 860px;
     margin: 0 auto 2.5rem;
 }
 
@@ -440,8 +468,20 @@ body {
     background: #3b82f6;
 }
 
+.coverage-bar-bb-ic {
+    background: #0ea5e9;
+}
+
 .coverage-bar-ecom {
     background: #8b5cf6;
+}
+
+.coverage-bar-captacion {
+    background: #f59e0b;
+}
+
+.coverage-bar-stocks {
+    background: #10b981;
 }
 
 .coverage-dates {
@@ -462,7 +502,7 @@ body {
 
 /* ===== HOME: KPI BUTTONS ===== */
 .home-kpi-buttons {
-    max-width: 1100px;
+    max-width: 860px;
     margin: 0 auto 2.5rem;
     padding-bottom: 2rem;
     border-bottom: 1px solid var(--color-border);
@@ -566,6 +606,146 @@ body {
     .kpi-card-v {
         flex: 0 0 calc(25% - 0.6rem);
     }
+}
+
+/* ===== HOME: DASHBOARD VIEW BUTTONS ===== */
+.home-dashboard-buttons {
+    max-width: 860px;
+    margin: 0 auto 2rem;
+}
+
+.home-coverage-section {
+    min-width: 0;
+}
+
+.home-data-section {
+    min-width: 0;
+}
+
+.home-bottom-grid {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 2rem;
+    max-width: 860px;
+    margin: 0 auto 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 720px) {
+    .home-bottom-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.dash-button-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 220px));
+    gap: 0.85rem;
+    justify-content: center;
+}
+
+.dash-button-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.dash-card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.72rem 0.85rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--color-text);
+    transition: all 0.15s;
+    text-align: left;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.dash-card:hover:not(.disabled) {
+    border-color: var(--color-primary);
+    box-shadow:
+        0 4px 12px rgba(37, 99, 235, 0.1),
+        0 2px 4px rgba(0, 0, 0, 0.04);
+    transform: translateY(-1px);
+}
+
+.dash-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Icon color variants */
+.dash-card-amber .dash-card-icon svg {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.dash-card-violet .dash-card-icon svg {
+    background: #ede9fe;
+    color: #7c3aed;
+}
+
+.dash-card-pink .dash-card-icon svg {
+    background: #fce7f3;
+    color: #db2777;
+}
+
+.dash-card-green .dash-card-icon svg {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.dash-card-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dash-card-icon svg {
+    width: 34px;
+    height: 34px;
+    padding: 7px;
+    border-radius: var(--radius-sm);
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.dash-card-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.dash-card-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.dash-card-hint {
+    font-size: 0.65rem;
+    color: var(--color-text-light);
+    line-height: 1.2;
+}
+
+@media (max-width: 700px) {
+    .dash-button-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Home grid 2-col variant */
+.home-grid-2col {
+    grid-template-columns: 1.6fr 1fr;
 }
 
 /* ===== KPI PANEL ===== */
@@ -863,6 +1043,41 @@ body {
     text-align: left;
 }
 
+/* Dashboard tables: Tienda/KPI column left-aligned, rest centered */
+#dg-table th, #dg-table td,
+#dd-table th, #dd-table td,
+#ds-table th, #ds-table td {
+    text-align: center;
+}
+
+#dg-table .col-name,
+#dd-table .col-name,
+#ds-table .col-name {
+    text-align: left;
+    font-weight: 500;
+}
+
+.kpi-table .col-shaded {
+    background: rgba(37, 99, 235, 0.05);
+    border-left: 1px solid var(--color-border);
+}
+
+.kpi-table tbody tr.row-total td {
+    background: var(--color-bg);
+    border-top: 2px solid var(--color-border);
+    font-weight: 700;
+}
+
+.kpi-table .cell-empty {
+    color: var(--color-text-lighter);
+    opacity: 0.5;
+}
+
+.kpi-table .cell-zero {
+    color: var(--color-text-lighter);
+    opacity: 0.4;
+}
+
 .kpi-table tbody tr:hover {
     background: #f8fafc;
 }
@@ -1140,7 +1355,7 @@ body {
 /* ===== IMPORT ZONES ===== */
 .import-drops {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 0.75rem;
     margin-bottom: 1.5rem;
 }

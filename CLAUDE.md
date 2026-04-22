@@ -1,4 +1,6 @@
-# KPI Tool 2026 - Normas de desarrollo
+# CapiMetrics 2026 - Normas de desarrollo
+
+> Nombre interno (DB Dexie, backup folder de Drive) se mantiene como "KPITool2026" por compatibilidad con datos existentes. Solo el nombre visible cambia a "CapiMetrics 2026".
 
 ## Formato de fechas
 - Todos los campos de fecha visibles al usuario deben mostrarse en formato **DD/MM/AAAA**
@@ -18,12 +20,28 @@
 ## Campos almacenados (solo KPI-relevantes)
 - Se guardan: reference, type, category, date, store, staff, quantity, price, total, source, week
 - Se descartan al importar: product, serial, sku, till, _raw
-- Se descartan filas de tipo: transfer, refund (no aportan a KPIs)
+- Se descartan filas de tipo: transfer (movimientos internos de stock)
+- **Refunds SI se guardan**: necesarios para ventas netas = ventas brutas - refunds
+- RMA se guarda pero no se usa aun en KPIs (puede ser util mas adelante)
 - Backups comprimidos con gzip (pako.js): exporta .json.gz, importa .gz o .json
 
+## Calculos de negocio clave
+- **Ventas netas** = Σ(total sale) − Σ(|total refund|)
+- **Compras totales** = Σ(|total cash buy|) + Σ(|total exchange|)
+- **Exchange** = compra pagada a cliente en vale de tienda (mas interesante para el negocio)
+- **Cash Buy** = compra pagada a cliente en efectivo
+- **% Vale** = exchange / compras totales (proporcion pagada en vale)
+
+## Fuentes de importacion
+- `baby-banking` (Baby Banking ES): Peninsula y Baleares
+- `baby-banking-ic` (Baby Banking IC): Islas Canarias (se exporta aparte en Looker)
+- `ecom` (Ecom Sales): no se almacena, solo cruza referencias contra ES + IC
+- `attachment`, `captacion`: placeholders (proximamente)
+
 ## Deduplicacion
-- La deduplicacion es **por fuente (source)**. Un mismo Order Number puede aparecer en Baby Banking y en Ecom Sales y NO es duplicado
+- La deduplicacion es **por fuente (source)**. Un mismo Order Number puede aparecer en Baby Banking ES y en Ecom Sales y NO es duplicado
 - Esto es intencionado: las coincidencias entre fuentes indican ordenes de e-commerce dentro de baby banking
+- ES y IC son fuentes distintas, asi que una orden con mismo numero en ambas (muy improbable) tampoco seria duplicado
 
 ## Datos CSV
 - Origen: Looker (CeX)

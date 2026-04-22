@@ -4,6 +4,40 @@
  */
 const Changelog = [
     {
+        date: '22/04/2026 (sesion 5 - parte 2)',
+        items: [
+            { type: 'change', text: 'Nombre de la app: KPI Tool 2026 -> CapiMetrics 2026 (topbar, titulo, backups). BD interna conserva el nombre anterior por compatibilidad' },
+            { type: 'change', text: 'Home: saludo "Buenos dias" retirado, sustituido por logo de CapiMetrics (assets/logo.png)' },
+            { type: 'change', text: 'Home armonizado con CapiTool: cards mas pequeñas (~15%) y con mismo formato horizontal en todas las secciones' },
+            { type: 'change', text: 'Layout del home: Vistas arriba centradas, Cobertura + Data en 2 columnas debajo' },
+            { type: 'change', text: '"Herramientas" renombrado a "Data"' },
+            { type: 'change', text: 'Iconos de Data con colores: Configuracion ambar, Exportar violeta, Importar backup rosa, Google Drive verde' },
+            { type: 'change', text: 'Contador de tiendas movido del saludo al label de Cobertura ("COBERTURA · N tiendas")' },
+            { type: 'change', text: 'Distancia logo -> primera fila de cards reducida un 20%' },
+            { type: 'new', text: 'Drop zone "Baby Banking IC" para Islas Canarias (inactiva hasta resolver diferencias de formato con ES)' },
+            { type: 'new', text: 'Drop zone "Stocks (AIO)" para inventario desde AIO (inactiva, pendiente formato)' },
+            { type: 'change', text: 'Cobertura muestra todas las fuentes (BB ES, BB IC, Ecom, Captacion, Stocks); las vacias aparecen con "sin datos"' },
+            { type: 'change', text: 'Cross-reference de Ecom preparado para cruzar contra ES + IC cuando IC se active' },
+            { type: 'change', text: 'Drop zone Attachment eliminada del importador' },
+        ]
+    },
+    {
+        date: '22/04/2026 (sesion 5)',
+        items: [
+            { type: 'new', text: 'Dashboard semanal: 3 vistas desde el home (General, Detalle, Tienda/empleado)' },
+            { type: 'new', text: 'Vista general (Tiendas x KPIs): rango de semanas, suma de ventas netas, compras y % vale' },
+            { type: 'new', text: 'Vista detalle (Tiendas x Categoria): desglose por categoria segun metrica' },
+            { type: 'new', text: 'Vista tienda/empleado: unifica los antiguos paneles Ventas y Moviles en un solo panel con selector de KPI' },
+            { type: 'new', text: 'Selector de KPI agrupado por familia (Ventas, Moviles, Compras) - preparado para ir añadiendo mas' },
+            { type: 'new', text: 'Calculo de ventas netas: brutas menos refunds' },
+            { type: 'new', text: 'Calculo de compras: cash buy + exchange, con % pagado en vale de tienda' },
+            { type: 'new', text: 'Home reorganizado: solo 3 cards de vistas arriba, herramientas a la derecha (Importar CSV incluido)' },
+            { type: 'change', text: 'Eliminadas secciones independientes de Ventas y Moviles. Su funcionalidad vive en Vista tienda/empleado' },
+            { type: 'change', text: 'Importador: los refunds pasan a guardarse (antes se descartaban). Reimporta los CSV para disponer de ellos' },
+            { type: 'change', text: 'Columnas pendientes (Socios, Stock, KPI 1-5) quedan como placeholders hasta definir origen' },
+        ]
+    },
+    {
         date: '09/04/2026 (sesion 4)',
         items: [
             { type: 'new', text: 'KPI Ventas: tickets, articulos, facturacion, ventas multiples, % venta complementaria, media articulos/ticket' },

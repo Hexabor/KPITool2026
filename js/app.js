@@ -1,5 +1,5 @@
 /**
- * KPI Tool 2026 - Main Application Controller
+ * CapiMetrics 2026 - Main Application Controller
  */
 const App = (() => {
     let currentPreviewData = null;
@@ -7,9 +7,10 @@ const App = (() => {
 
     const SOURCE_LABELS = {
         'baby-banking': 'Baby Banking ES',
+        'baby-banking-ic': 'Baby Banking IC',
         'ecom': 'Ecom Sales',
-        'attachment': 'Attachment',
-        'captacion': 'Captacion'
+        'captacion': 'Captacion',
+        'stocks': 'Stocks (AIO)'
     };
 
 
@@ -44,10 +45,9 @@ const App = (() => {
             console.error('Init refreshHome error:', e);
         }
 
-        updateGreeting();
         updateTopbarWeek();
 
-        console.log('KPI Tool 2026 initialized');
+        console.log('CapiMetrics 2026 initialized');
     }
 
     // ============================
@@ -111,14 +111,13 @@ const App = (() => {
 
         // Store selects (searchable)
         initStoreSelect('kpi-panel-store', 'kpi-panel-store-list', refreshEvolution);
-        initStoreSelect('cs-store', 'cs-store-list', refreshCrossSellEvo);
 
-        // KPI Mobiles filters
+        // Vista tienda/empleado filters (evolucion semanal unificada)
         document.getElementById('evo-week-from').addEventListener('change', refreshEvolution);
         document.getElementById('evo-week-to').addEventListener('change', refreshEvolution);
         document.getElementById('evo-metric').addEventListener('change', () => {
             const m = document.getElementById('evo-metric').value;
-            document.getElementById('evo-min-ops').disabled = !m.startsWith('pct');
+            document.getElementById('evo-min-ops').disabled = !METRICS[m]?.isPct;
             refreshEvolution();
         });
         document.getElementById('evo-min-ops').addEventListener('change', refreshEvolution);
@@ -130,20 +129,15 @@ const App = (() => {
         document.getElementById('evo-merge-stores')?.addEventListener('change', refreshEvolution);
         document.getElementById('btn-toggle-chart').addEventListener('click', toggleEvoChart);
 
-        // KPI Cross-sell filters
-        document.getElementById('cs-week-from').addEventListener('change', refreshCrossSellEvo);
-        document.getElementById('cs-week-to').addEventListener('change', refreshCrossSellEvo);
-        document.getElementById('cs-metric').addEventListener('change', () => {
-            const m = document.getElementById('cs-metric').value;
-            document.getElementById('cs-min-ops').disabled = !(m === 'pctMulti' || m === 'avgItems');
-            refreshCrossSellEvo();
-        });
-        document.getElementById('cs-min-ops').addEventListener('change', refreshCrossSellEvo);
-        document.getElementById('cs-scope').addEventListener('change', refreshCrossSellEvo);
-        document.getElementById('cs-top-n').addEventListener('change', refreshCrossSellEvo);
-        document.getElementById('cs-exclude-ecom')?.addEventListener('change', refreshCrossSellEvo);
-        document.getElementById('cs-merge-stores')?.addEventListener('change', refreshCrossSellEvo);
-        document.getElementById('btn-toggle-cs-chart').addEventListener('click', toggleCsChart);
+        // Dashboard: general
+        document.getElementById('dg-week-from').addEventListener('change', refreshDashGeneral);
+        document.getElementById('dg-week-to').addEventListener('change', refreshDashGeneral);
+        document.getElementById('dg-exclude-ecom').addEventListener('change', refreshDashGeneral);
+
+        // Dashboard: detail
+        document.getElementById('dd-week').addEventListener('change', refreshDashDetail);
+        document.getElementById('dd-metric').addEventListener('change', refreshDashDetail);
+        document.getElementById('dd-exclude-ecom').addEventListener('change', refreshDashDetail);
 
         // Changelog
         document.getElementById('btn-changelog').addEventListener('click', openChangelog);
@@ -165,8 +159,9 @@ const App = (() => {
             case 'go-home': navigateTo('home'); break;
             case 'go-import': navigateTo('import'); break;
             case 'go-settings': navigateTo('settings'); break;
-            case 'go-kpi-mobiles': navigateTo('kpi-mobiles'); break;
-            case 'go-kpi-crosssell': navigateTo('kpi-crosssell'); break;
+            case 'go-dash-general': navigateTo('dash-general'); break;
+            case 'go-dash-detail': navigateTo('dash-detail'); break;
+            case 'go-dash-store': navigateTo('dash-store'); break;
             case 'export-json': exportData(); break;
             case 'import-json': document.getElementById('json-input').click(); break;
             case 'drive-sync': syncDrive(); break;
@@ -187,26 +182,18 @@ const App = (() => {
         if (sectionId === 'home') refreshHome();
         if (sectionId === 'import') { renderImportHistory(); renderEcomTimeline(); }
         if (sectionId === 'settings') loadSettings();
-        if (sectionId === 'kpi-mobiles') refreshKPIMobiles();
-        if (sectionId === 'kpi-crosssell') refreshKPICrossSell();
+        if (sectionId === 'dash-general') refreshDashGeneral();
+        if (sectionId === 'dash-detail') refreshDashDetail();
+        if (sectionId === 'dash-store') refreshDashStore();
     }
 
     // ============================
-    // GREETING & TOPBAR
+    // TOPBAR
     // ============================
-    function updateGreeting() {
-        const h = new Date().getHours();
-        let greeting = 'Buenas noches';
-        if (h >= 6 && h < 14) greeting = 'Buenos dias';
-        else if (h >= 14 && h < 21) greeting = 'Buenas tardes';
-        document.getElementById('home-greeting-text').textContent = greeting;
-    }
-
     function updateTopbarWeek() {
         const today = new Date().toISOString().substring(0, 10);
         const wk = KPIEngine.helpers.businessWeek(today);
         document.getElementById('topbar-week').textContent = `Semana ${wk}`;
-        document.getElementById('home-week-num').textContent = wk;
     }
 
     // ============================
@@ -216,10 +203,14 @@ const App = (() => {
         const count = await Database.getRecordCount();
         document.getElementById('db-status-badge').textContent = `DB: ${count.toLocaleString()}`;
 
-        // Store name from data
+        // Store count shown next to COBERTURA label
         const stores = await Database.getDistinctValues('store');
-        document.getElementById('home-store-name').textContent =
-            stores.length === 1 ? stores[0] : (stores.length > 1 ? `${stores.length} tiendas` : '--');
+        const storeCountEl = document.getElementById('coverage-store-count');
+        if (storeCountEl) {
+            if (stores.length === 0) storeCountEl.textContent = '';
+            else if (stores.length === 1) storeCountEl.textContent = `· ${stores[0]}`;
+            else storeCountEl.textContent = `· ${stores.length} tiendas`;
+        }
 
         updateTopbarWeek();
         await renderCoverageBars();
@@ -231,8 +222,11 @@ const App = (() => {
         const ranges = await Database.getDateRangeBySource();
 
         const sources = {
-            'baby-banking': { label: 'Baby Banking', cssClass: 'coverage-bar-bb' },
-            'ecom': { label: 'Ecom Sales', cssClass: 'coverage-bar-ecom' }
+            'baby-banking': { label: 'Baby Banking ES', cssClass: 'coverage-bar-bb' },
+            'baby-banking-ic': { label: 'Baby Banking IC', cssClass: 'coverage-bar-bb-ic' },
+            'ecom': { label: 'Ecom Sales', cssClass: 'coverage-bar-ecom' },
+            'captacion': { label: 'Captacion de socios', cssClass: 'coverage-bar-captacion' },
+            'stocks': { label: 'Stocks (AIO)', cssClass: 'coverage-bar-stocks' }
         };
 
         // Find global min/max
@@ -368,9 +362,9 @@ const App = (() => {
      */
 
     // ============================
-    // KPI PANEL (sortable, multi-KPI ready)
+    // DASHBOARD: STORE/STAFF (evolucion por KPI - unifica Ventas + Moviles + futuros)
     // ============================
-    async function refreshKPIMobiles() {
+    async function refreshDashStore() {
         const stores = await Database.getDistinctValues('store');
         populateStoreSelect('kpi-panel-store', stores);
 
@@ -405,13 +399,140 @@ const App = (() => {
     }
 
     // ============================
+    // METRIC REGISTRY (unificado Ventas + Moviles + Compras)
+    // ============================
+    function emptyBucket() {
+        return {
+            saleRevenue: 0, saleUnits: 0, refundAmount: 0,
+            ticketRefs: {},
+            mobiles: 0, mobilesTotal: 0, services: 0, basics: 0,
+            cashBuyAmount: 0, exchangeAmount: 0
+        };
+    }
+
+    function addToBucket(b, r) {
+        const total = r.total || 0;
+        const qty = r.quantity || 0;
+        const catLower = (r.category || '').toLowerCase();
+        if (r.type === 'sale') {
+            if ((r.price || 0) > 0) {
+                b.saleRevenue += total;
+                b.saleUnits += qty;
+                const ref = r.reference || `_noref_${r.id || Math.random()}`;
+                b.ticketRefs[ref] = (b.ticketRefs[ref] || 0) + 1;
+            }
+            if (catLower.includes('moviles')) { b.mobiles += qty; b.mobilesTotal += total; }
+            if (catLower.includes('services')) { b.services += qty; }
+            if (catLower.includes('basics')) { b.basics += qty; }
+        } else if (r.type === 'refund') {
+            b.refundAmount += Math.abs(total);
+        } else if (r.type === 'cash buy') {
+            b.cashBuyAmount += Math.abs(total);
+        } else if (r.type === 'exchange') {
+            b.exchangeAmount += Math.abs(total);
+        }
+    }
+
+    function mergeBuckets(dst, src) {
+        dst.saleRevenue += src.saleRevenue;
+        dst.saleUnits += src.saleUnits;
+        dst.refundAmount += src.refundAmount;
+        for (const [ref, c] of Object.entries(src.ticketRefs)) {
+            dst.ticketRefs[ref] = (dst.ticketRefs[ref] || 0) + c;
+        }
+        dst.mobiles += src.mobiles;
+        dst.mobilesTotal += src.mobilesTotal;
+        dst.services += src.services;
+        dst.basics += src.basics;
+        dst.cashBuyAmount += src.cashBuyAmount;
+        dst.exchangeAmount += src.exchangeAmount;
+    }
+
+    function bucketTickets(b) { return b ? Object.keys(b.ticketRefs).length : 0; }
+    function bucketMultiTickets(b) { return b ? Object.values(b.ticketRefs).filter(c => c > 1).length : 0; }
+
+    const METRICS = {
+        // Ventas
+        netSales:      { label: 'Ventas netas',          isCurrency: true,
+            value: b => b.saleRevenue - b.refundAmount,
+            format: v => formatCurrency(v) },
+        grossSales:    { label: 'Ventas brutas',         isCurrency: true,
+            value: b => b.saleRevenue,
+            format: v => formatCurrency(v) },
+        refundsAmount: { label: 'Refunds',               isCurrency: true,
+            value: b => b.refundAmount,
+            format: v => formatCurrency(v) },
+        totalItems:    { label: 'Articulos vendidos',
+            value: b => b.saleUnits,
+            format: v => (v || 0).toLocaleString('es-ES') },
+        tickets:       { label: 'Tickets',
+            value: b => bucketTickets(b),
+            format: v => (v || 0).toLocaleString('es-ES') },
+        multiTickets:  { label: 'Tickets multiples',
+            value: b => bucketMultiTickets(b),
+            format: v => (v || 0).toLocaleString('es-ES') },
+        pctMulti:      { label: '% Venta complementaria', isPct: true,
+            minOpsOf: b => bucketTickets(b),
+            value: b => { const t = bucketTickets(b); return t > 0 ? (bucketMultiTickets(b) / t) * 100 : 0; },
+            format: (v, b) => formatPctDetail(bucketMultiTickets(b), bucketTickets(b)) },
+        avgItems:      { label: 'Media articulos/ticket', isPct: true,
+            minOpsOf: b => bucketTickets(b),
+            value: b => { const t = bucketTickets(b); return t > 0 ? b.saleUnits / t : 0; },
+            format: (v, b) => {
+                const t = bucketTickets(b);
+                return t > 0 ? `${(b.saleUnits / t).toFixed(1)} <small class="pct-units">(${b.saleUnits}/${t})</small>` : '--';
+            } },
+        // Moviles
+        mobiles:       { label: 'Moviles (uds)',
+            value: b => b.mobiles,
+            format: v => (v || 0).toLocaleString('es-ES') },
+        mobilesTotal:  { label: 'Moviles (EUR)',         isCurrency: true,
+            value: b => b.mobilesTotal,
+            format: v => formatCurrency(v) },
+        services:      { label: 'Protectores de gel',
+            value: b => b.services,
+            format: v => (v || 0).toLocaleString('es-ES') },
+        pctServices:   { label: '% Gel/Movil',           isPct: true,
+            minOpsOf: b => b.mobiles,
+            value: b => b.mobiles > 0 ? (b.services / b.mobiles) * 100 : 0,
+            format: (v, b) => formatPctDetail(b.services, b.mobiles) },
+        basics:        { label: 'Basics',
+            value: b => b.basics,
+            format: v => (v || 0).toLocaleString('es-ES') },
+        pctBasics:     { label: '% Basics/Movil',        isPct: true,
+            minOpsOf: b => b.mobiles,
+            value: b => b.mobiles > 0 ? (b.basics / b.mobiles) * 100 : 0,
+            format: (v, b) => formatPctDetail(b.basics, b.mobiles) },
+        pctCombo:      { label: '% Combo/Movil',         isPct: true,
+            minOpsOf: b => b.mobiles,
+            value: b => b.mobiles > 0 ? ((b.services + b.basics) / b.mobiles) * 100 : 0,
+            format: (v, b) => formatPctDetail(b.services + b.basics, b.mobiles) },
+        // Compras
+        buys:          { label: 'Compras (EUR)',         isCurrency: true,
+            value: b => b.cashBuyAmount + b.exchangeAmount,
+            format: v => formatCurrency(v) },
+        cashBuys:      { label: 'Cash buys (EUR)',       isCurrency: true,
+            value: b => b.cashBuyAmount,
+            format: v => formatCurrency(v) },
+        exchanges:     { label: 'Exchanges (EUR)',       isCurrency: true,
+            value: b => b.exchangeAmount,
+            format: v => formatCurrency(v) },
+        pctVale:       { label: '% Vale',                isPct: true,
+            value: b => { const t = b.cashBuyAmount + b.exchangeAmount; return t > 0 ? (b.exchangeAmount / t) * 100 : 0; },
+            format: (v, b) => {
+                const t = b.cashBuyAmount + b.exchangeAmount;
+                return t > 0 ? formatPctDetail(Math.round(b.exchangeAmount), Math.round(t)) : '--';
+            } }
+    };
+
+    // ============================
     // EVOLUTION TABLE
     // ============================
     let evoState = {
         staffWeekData: {},
         weeks: [],
         scope: 'staff',
-        metric: 'mobiles',
+        metric: 'netSales',
         sortCol: null,
         sortDir: 'desc',
         selectedStaff: null  // clicked row for chart highlight
@@ -453,21 +574,26 @@ const App = (() => {
         }
 
         const allData = await Database.getOperationsForKPI({});
-        let sales = allData.filter(r => r.type === 'sale');
+        let records = allData;
         if (store && store !== 'all') {
-            sales = sales.filter(r => r.store === store);
+            records = records.filter(r => r.store === store);
         }
         const excludeEcom = document.getElementById('evo-exclude-ecom')?.checked;
         if (excludeEcom) {
-            sales = sales.filter(r => r.channel !== 'ecom');
+            records = records.filter(r => r.channel !== 'ecom');
         }
 
         evoState.staffWeekData = {};
         evoState.staffStore = {};
         const nameStores = {};
-        for (const r of sales) {
+        for (const r of records) {
             const wk = r.week;
             if (wk < weekFrom || wk > weekTo) continue;
+            // Compras agregan a la tienda, no al empleado (no se atribuyen a staff).
+            // Para scope=staff descartamos cash buy/exchange/refund.
+            if (evoState.scope === 'staff' && (r.type === 'cash buy' || r.type === 'exchange' || r.type === 'refund')) {
+                continue;
+            }
 
             const staffName = r.staff || 'N/A';
             const storeName = r.store || '?';
@@ -476,23 +602,14 @@ const App = (() => {
                 key = storeName;
             } else {
                 key = `${staffName}\t${storeName}`;
-            }
-            const catLower = (r.category || '').toLowerCase();
-            const qty = r.quantity || 0;
-
-            if (evoState.scope === 'staff') {
                 evoState.staffStore[key] = storeName;
                 if (!nameStores[staffName]) nameStores[staffName] = new Set();
                 nameStores[staffName].add(storeName);
             }
 
             if (!evoState.staffWeekData[key]) evoState.staffWeekData[key] = {};
-            if (!evoState.staffWeekData[key][wk]) evoState.staffWeekData[key][wk] = { mobiles: 0, mobilesTotal: 0, services: 0, basics: 0 };
-
-            const cell = evoState.staffWeekData[key][wk];
-            if (catLower.includes('moviles')) { cell.mobiles += qty; cell.mobilesTotal += (r.total || 0); }
-            if (catLower.includes('services')) { cell.services += qty; }
-            if (catLower.includes('basics')) { cell.basics += qty; }
+            if (!evoState.staffWeekData[key][wk]) evoState.staffWeekData[key][wk] = emptyBucket();
+            addToBucket(evoState.staffWeekData[key][wk], r);
         }
 
         // Track names that appear in multiple stores
@@ -512,11 +629,8 @@ const App = (() => {
                 const store = evoState.staffStore[key];
                 if (store) mergedStores[name].add(store);
                 for (const [wk, cell] of Object.entries(weekData)) {
-                    if (!merged[name][wk]) merged[name][wk] = { mobiles: 0, mobilesTotal: 0, services: 0, basics: 0 };
-                    merged[name][wk].mobiles += cell.mobiles;
-                    merged[name][wk].mobilesTotal += cell.mobilesTotal;
-                    merged[name][wk].services += cell.services;
-                    merged[name][wk].basics += cell.basics;
+                    if (!merged[name][wk]) merged[name][wk] = emptyBucket();
+                    mergeBuckets(merged[name][wk], cell);
                 }
             }
             evoState.staffWeekData = merged;
@@ -549,50 +663,39 @@ const App = (() => {
         const wd = evoState.staffWeekData[name];
         if (col === 'name') return (name.includes('\t') ? name.split('\t')[0] : name).toLowerCase();
         if (col === 'store') return (evoState.staffStore?.[name] || '').toLowerCase();
-        // Get cell data for a specific week or total
-        let cellData;
+        const def = METRICS[metric];
+        if (!def) return 0;
+        let bucket;
         if (col === 'total') {
-            cellData = { mobiles: 0, mobilesTotal: 0, services: 0, basics: 0 };
-            for (const wk of weeks) { const c = wd?.[wk]; if (c) { cellData.mobiles += c.mobiles; cellData.mobilesTotal += c.mobilesTotal; cellData.services += c.services; cellData.basics += c.basics; } }
+            bucket = emptyBucket();
+            for (const wk of weeks) { const c = wd?.[wk]; if (c) mergeBuckets(bucket, c); }
         } else {
-            cellData = wd?.[col] || { mobiles: 0, mobilesTotal: 0, services: 0, basics: 0 };
+            bucket = wd?.[col] || emptyBucket();
         }
-        const m = cellData.mobiles, s = cellData.services, b = cellData.basics;
-        if (metric === 'pctServices') return m > 0 ? s / m : -1;
-        if (metric === 'pctBasics') return m > 0 ? b / m : -1;
-        if (metric === 'pctCombo') return m > 0 ? (s + b) / m : -1;
-        if (metric === 'mobilesTotal') return cellData.mobilesTotal;
-        return cellData[metric] || 0;
+        const v = def.value(bucket);
+        // For pct metrics without denominator, sort to bottom
+        if (def.isPct && v === 0 && def.minOpsOf && def.minOpsOf(bucket) === 0) return -1;
+        return v;
     }
 
     function evoCellValue(cellData, metricKey) {
+        const def = METRICS[metricKey];
+        if (!def) return '0';
+        const bucket = cellData || emptyBucket();
         if (!cellData) {
-            if (metricKey.startsWith('pct')) return '--';
-            if (metricKey === 'mobilesTotal') return formatCurrency(0);
+            if (def.isPct) return '--';
+            if (def.isCurrency) return formatCurrency(0);
             return '0';
         }
-        const m = cellData.mobiles, s = cellData.services, b = cellData.basics;
-        if (metricKey === 'pctServices') return formatPctDetail(s, m);
-        if (metricKey === 'pctBasics') return formatPctDetail(b, m);
-        if (metricKey === 'pctCombo') return formatPctDetail(s + b, m);
-        if (metricKey === 'mobilesTotal') return formatCurrency(cellData.mobilesTotal);
-        return cellData[metricKey] || 0;
+        return def.format(def.value(bucket), bucket);
     }
 
     function evoRowTotal(weekData, metricKey, weeks) {
-        let sumM = 0, sumS = 0, sumB = 0, sumMT = 0;
-        for (const wk of weeks) {
-            const c = weekData[wk]; if (!c) continue;
-            sumM += c.mobiles; sumS += c.services; sumB += c.basics; sumMT += c.mobilesTotal;
-        }
-        if (metricKey === 'pctServices') return formatPctDetail(sumS, sumM);
-        if (metricKey === 'pctBasics') return formatPctDetail(sumB, sumM);
-        if (metricKey === 'pctCombo') return formatPctDetail(sumS + sumB, sumM);
-        if (metricKey === 'mobilesTotal') return formatCurrency(sumMT);
-        if (metricKey === 'mobiles') return sumM;
-        if (metricKey === 'services') return sumS;
-        if (metricKey === 'basics') return sumB;
-        return 0;
+        const def = METRICS[metricKey];
+        if (!def) return 0;
+        const bucket = emptyBucket();
+        for (const wk of weeks) { const c = weekData[wk]; if (c) mergeBuckets(bucket, c); }
+        return def.format(def.value(bucket), bucket);
     }
 
     function renderEvolution() {
@@ -642,13 +745,17 @@ const App = (() => {
             return rankDir === 'asc' ? va - vb : vb - va;
         });
 
-        // Filter by min operations for percentage metrics
-        if (metric.startsWith('pct')) {
+        // Filter by min operations for percentage/average metrics
+        const metricDef = METRICS[metric];
+        if (metricDef?.isPct && metricDef.minOpsOf) {
             const minOps = parseInt(document.getElementById('evo-min-ops').value) || 0;
             if (minOps > 0) {
                 staffNames = staffNames.filter(key => {
                     let total = 0;
-                    for (const wk of weeks) { total += staffWeekData[key]?.[wk]?.mobiles || 0; }
+                    for (const wk of weeks) {
+                        const c = staffWeekData[key]?.[wk];
+                        if (c) total += metricDef.minOpsOf(c);
+                    }
                     return total >= minOps;
                 });
             }
@@ -694,11 +801,10 @@ const App = (() => {
         if (staffNames.length > 1) {
             const colTotals = {};
             for (const w of weeks) {
-                colTotals[w] = { mobiles: 0, mobilesTotal: 0, services: 0, basics: 0 };
+                colTotals[w] = emptyBucket();
                 for (const name of staffNames) {
-                    const c = staffWeekData[name]?.[w]; if (!c) continue;
-                    colTotals[w].mobiles += c.mobiles; colTotals[w].mobilesTotal += c.mobilesTotal;
-                    colTotals[w].services += c.services; colTotals[w].basics += c.basics;
+                    const c = staffWeekData[name]?.[w];
+                    if (c) mergeBuckets(colTotals[w], c);
                 }
             }
             tfoot.innerHTML = `<tr data-staff="__TOTAL__">
@@ -737,12 +843,8 @@ const App = (() => {
         });
 
         // Conditional gradient for absolute metrics
-        if (!metric.startsWith('pct')) {
-            const evoExtractor = (cell) => {
-                if (!cell) return 0;
-                if (metric === 'mobilesTotal') return cell.mobilesTotal || 0;
-                return cell[metric] || 0;
-            };
+        if (metricDef && !metricDef.isPct) {
+            const evoExtractor = (cell) => cell ? (metricDef.value(cell) || 0) : 0;
             applyHeatmap('evo-table', staffWeekData, weeks, evoExtractor);
         }
 
@@ -758,13 +860,25 @@ const App = (() => {
     let evoChartInstance = null;
 
     const CHART_METRIC_INFO = {
+        netSales: 'Ventas netas = ventas brutas - refunds',
+        grossSales: 'Suma de ventas (type=sale)',
+        refundsAmount: 'Importe de devoluciones (valor absoluto)',
+        totalItems: 'Unidades vendidas (lineas de venta)',
+        tickets: 'Numero de tickets unicos (Order Number distintos en sales)',
+        multiTickets: 'Tickets con mas de 1 linea',
+        pctMulti: '% Venta complementaria.\nNumerador: tickets con >1 linea\nDenominador: tickets totales',
+        avgItems: 'Media de articulos por ticket.\nNumerador: articulos\nDenominador: tickets',
         pctServices: 'Porcentaje de geles (Services)\nvendidos por movil.\n\nNumerador: lineas Services\nDenominador: lineas Moviles',
         pctBasics: 'Porcentaje de CeX Basics\nvendidos por movil.\n\nNumerador: lineas Basics\nDenominador: lineas Moviles',
         pctCombo: 'Porcentaje combinado de\ngeles + basics por movil.\n\nNumerador: Services + Basics\nDenominador: lineas Moviles',
         mobiles: 'Unidades de moviles vendidos\n(lineas con categoria "Moviles")',
         mobilesTotal: 'Importe total de moviles vendidos',
         services: 'Unidades de Services vendidos\n(lineas con categoria "Services")',
-        basics: 'Unidades de CeX Basics vendidos\n(lineas con categoria "basics")'
+        basics: 'Unidades de CeX Basics vendidos\n(lineas con categoria "basics")',
+        buys: 'Compras totales (cash buy + exchange) en valor absoluto',
+        cashBuys: 'Compras pagadas en efectivo',
+        exchanges: 'Compras pagadas en vale de tienda (mas rentables)',
+        pctVale: '% de compras pagadas en vale.\nNumerador: exchange EUR\nDenominador: cash buy + exchange EUR'
     };
 
     function toggleEvoChart() {
@@ -814,7 +928,9 @@ const App = (() => {
         }
 
         const labels = weeks.map(w => `W${w}`);
-        const isPct = chartMetric.startsWith('pct');
+        const metricDef = METRICS[chartMetric];
+        const isPct = !!metricDef?.isPct;
+        const isCurrency = !!metricDef?.isCurrency;
         const topNVal = document.getElementById('evo-top-n').value;
         const showTotal = allStaff.length === 1;
         const maxLines = topNVal === 'all' ? 999 : parseInt(topNVal) || 999;
@@ -825,44 +941,32 @@ const App = (() => {
             '#be123c', '#0d9488', '#c026d3', '#ca8a04', '#475569'
         ];
 
+        // Aggregate total bucket across all staff for a week
+        const totalBucketAtWeek = (w) => {
+            const b = emptyBucket();
+            for (const name of allStaff) {
+                const c = staffWeekData[name]?.[w];
+                if (c) mergeBuckets(b, c);
+            }
+            return b;
+        };
+
         let datasets;
 
         // If a row is selected, show that line (+ total as context if it's a staff)
         const selected = evoState.selectedStaff;
         if (selected === '__TOTAL__' || (showTotal && !selected)) {
-            // Show total line
-            const data = weeks.map(w => {
-                let m = 0, s = 0, b = 0, mt = 0;
-                for (const name of allStaff) {
-                    const c = staffWeekData[name]?.[w]; if (!c) continue;
-                    m += c.mobiles; s += c.services; b += c.basics; mt += c.mobilesTotal;
-                }
-                return evoChartValue({ mobiles: m, services: s, basics: b, mobilesTotal: mt }, chartMetric);
-            });
+            const data = weeks.map(w => evoChartValue(totalBucketAtWeek(w), chartMetric));
             datasets = [{ label: 'Total', data, borderColor: colors[0], backgroundColor: colors[0] + '20', tension: 0.3, fill: true, pointRadius: 4 }];
         } else if (selected && staffWeekData[selected] && !showTotal) {
             const selData = weeks.map(w => evoChartValue(staffWeekData[selected]?.[w], chartMetric));
-            const totalData = weeks.map(w => {
-                let m = 0, s = 0, b = 0, mt = 0;
-                for (const name of allStaff) {
-                    const c = staffWeekData[name]?.[w]; if (!c) continue;
-                    m += c.mobiles; s += c.services; b += c.basics; mt += c.mobilesTotal;
-                }
-                return evoChartValue({ mobiles: m, services: s, basics: b, mobilesTotal: mt }, chartMetric);
-            });
+            const totalData = weeks.map(w => evoChartValue(totalBucketAtWeek(w), chartMetric));
             datasets = [
                 { label: selected.split(' ').slice(0, 2).join(' '), data: selData, borderColor: colors[0], backgroundColor: colors[0] + '20', tension: 0.3, fill: true, pointRadius: 5, borderWidth: 3 },
                 { label: 'Total tienda', data: totalData, borderColor: '#94a3b8', backgroundColor: 'transparent', tension: 0.3, pointRadius: 3, borderWidth: 1.5, borderDash: [4, 3] }
             ];
         } else if (showTotal) {
-            const data = weeks.map(w => {
-                let m = 0, s = 0, b = 0, mt = 0;
-                for (const name of allStaff) {
-                    const c = staffWeekData[name]?.[w]; if (!c) continue;
-                    m += c.mobiles; s += c.services; b += c.basics; mt += c.mobilesTotal;
-                }
-                return evoChartValue({ mobiles: m, services: s, basics: b, mobilesTotal: mt }, chartMetric);
-            });
+            const data = weeks.map(w => evoChartValue(totalBucketAtWeek(w), chartMetric));
             datasets = [{ label: 'Total', data, borderColor: colors[0], backgroundColor: colors[0] + '20', tension: 0.3, fill: true, pointRadius: 4 }];
         } else {
             const rankCol = evoState.sortCol || 'total';
@@ -900,7 +1004,8 @@ const App = (() => {
                         callbacks: {
                             label: function(ctx) {
                                 const val = ctx.parsed.y;
-                                return `${ctx.dataset.label}: ${isPct ? val + '%' : val}`;
+                                const suffix = isPct ? val + '%' : isCurrency ? formatCurrency(val) : val;
+                                return `${ctx.dataset.label}: ${suffix}`;
                             }
                         }
                     }
@@ -911,7 +1016,7 @@ const App = (() => {
                         ticks: {
                             font: { size: 9 },
                             color: '#94a3b8',
-                            callback: val => isPct ? val + '%' : val,
+                            callback: val => isPct ? val + '%' : isCurrency ? formatCurrency(val) : val,
                             mirror: true,
                             padding: 4,
                             align: 'end'
@@ -931,459 +1036,10 @@ const App = (() => {
 
     function evoChartValue(cellData, metricKey) {
         if (!cellData) return 0;
-        const m = cellData.mobiles, s = cellData.services, b = cellData.basics;
-        if (metricKey === 'pctServices') return m > 0 ? Math.round((s / m) * 100) : 0;
-        if (metricKey === 'pctBasics') return m > 0 ? Math.round((b / m) * 100) : 0;
-        if (metricKey === 'pctCombo') return m > 0 ? Math.round(((s + b) / m) * 100) : 0;
-        if (metricKey === 'mobilesTotal') return cellData.mobilesTotal;
-        return cellData[metricKey] || 0;
-    }
-
-    // ============================
-    // KPI: VENTA COMPLEMENTARIA
-    // ============================
-    let csState = {
-        data: {},       // key -> { wk -> { totalTickets, multiCount, totalItems } }
-        weeks: [],
-        scope: 'staff',
-        metric: 'totalItems',
-        sortCol: null,
-        sortDir: 'desc',
-        selectedRow: null,
-        staffStore: {},
-        duplicateNames: new Set()
-    };
-    let csChartInstance = null;
-
-    async function refreshKPICrossSell() {
-        const stores = await Database.getDistinctValues('store');
-        populateStoreSelect('cs-store', stores);
-
-        const today = new Date().toISOString().substring(0, 10);
-        const currentWeek = KPIEngine.helpers.businessWeek(today);
-        const fromEl = document.getElementById('cs-week-from');
-        const toEl = document.getElementById('cs-week-to');
-
-        const savedFrom = await Database.getSetting('evoWeekFrom');
-        const savedTo = await Database.getSetting('evoWeekTo');
-        if (savedFrom && savedTo) {
-            fromEl.value = savedFrom;
-            toEl.value = savedTo;
-        } else if (parseInt(toEl.value) < 2) {
-            fromEl.value = Math.max(1, currentWeek - 3);
-            toEl.value = currentWeek;
-        }
-
-        refreshCrossSellEvo();
-    }
-
-    async function refreshCrossSellEvo() {
-        const weekFrom = parseInt(document.getElementById('cs-week-from').value) || 1;
-        const weekTo = parseInt(document.getElementById('cs-week-to').value) || weekFrom;
-        csState.metric = document.getElementById('cs-metric').value;
-        csState.scope = document.getElementById('cs-scope').value;
-        const store = getStoreValue('cs-store');
-
-        const courseStart = KPIEngine.getCourseStart();
-        const cs = courseStart.split('-');
-        const startMs = Date.UTC(cs[0], cs[1] - 1, cs[2]);
-        const fromDate = new Date(startMs + (weekFrom - 1) * 7 * 86400000).toISOString().substring(0, 10);
-        const toDate = new Date(startMs + weekTo * 7 * 86400000 - 86400000).toISOString().substring(0, 10);
-        document.getElementById('cs-week-range').textContent =
-            weekFrom === weekTo
-                ? `Semana ${weekFrom} (${UI.formatDate(fromDate)} - ${UI.formatDate(toDate)})`
-                : `Semanas ${weekFrom}-${weekTo} (${UI.formatDate(fromDate)} - ${UI.formatDate(toDate)})`;
-
-        csState.sortCol = null;
-        csState.sortDir = 'desc';
-        csState.weeks = [];
-        for (let w = weekFrom; w <= weekTo; w++) csState.weeks.push(w);
-
-        if (csState.weeks.length === 0 || csState.weeks.length > 52) {
-            document.getElementById('cs-tbody').innerHTML =
-                '<tr><td class="empty-msg">Rango de semanas no valido.</td></tr>';
-            return;
-        }
-
-        const allData = await Database.getOperationsForKPI({});
-        let sales = allData.filter(r => r.type === 'sale');
-        if (store && store !== 'all') sales = sales.filter(r => r.store === store);
-        const excludeEcom = document.getElementById('cs-exclude-ecom')?.checked;
-        if (excludeEcom) sales = sales.filter(r => r.channel !== 'ecom');
-
-        // Filter out non-article lines (price <= 0)
-        sales = sales.filter(r => (r.price || 0) > 0);
-
-        // Group by owner (staff or store) + week + reference
-        // owner -> week -> reference -> count of article lines
-        const ownerRefCount = {};
-        csState.staffStore = {};
-        const nameStores = {};
-
-        for (const r of sales) {
-            const wk = r.week;
-            if (wk < weekFrom || wk > weekTo) continue;
-
-            const staffName = r.staff || 'N/A';
-            const storeName = r.store || '?';
-            let key;
-            if (csState.scope === 'store') {
-                key = storeName;
-            } else {
-                key = `${staffName}\t${storeName}`;
-                csState.staffStore[key] = storeName;
-                if (!nameStores[staffName]) nameStores[staffName] = new Set();
-                nameStores[staffName].add(storeName);
-            }
-
-            const ref = r.reference || `_noref_${r.id}`;
-
-            if (!ownerRefCount[key]) ownerRefCount[key] = {};
-            if (!ownerRefCount[key][wk]) ownerRefCount[key][wk] = { refs: {}, revenue: 0 };
-            ownerRefCount[key][wk].refs[ref] = (ownerRefCount[key][wk].refs[ref] || 0) + 1;
-            ownerRefCount[key][wk].revenue += (r.total || 0);
-        }
-
-        // Compute aggregated metrics per owner per week
-        csState.data = {};
-        for (const [key, weekData] of Object.entries(ownerRefCount)) {
-            csState.data[key] = {};
-            for (const [wk, wd] of Object.entries(weekData)) {
-                const refs = wd.refs;
-                const tickets = Object.keys(refs).length;
-                const multiTickets = Object.values(refs).filter(c => c > 1).length;
-                const totalItems = Object.values(refs).reduce((a, b) => a + b, 0);
-                csState.data[key][parseInt(wk)] = { totalTickets: tickets, multiCount: multiTickets, totalItems, revenue: wd.revenue };
-            }
-        }
-
-        csState.nameStoresMap = {};
-        for (const [name, stores] of Object.entries(nameStores)) {
-            if (stores.size > 1) csState.nameStoresMap[name] = [...stores];
-        }
-
-        // Merge stores if toggle is on
-        const mergeStores = document.getElementById('cs-merge-stores')?.checked;
-        if (mergeStores && csState.scope === 'staff') {
-            const merged = {};
-            const mergedStores = {};
-            for (const [key, weekData] of Object.entries(csState.data)) {
-                const name = key.includes('\t') ? key.split('\t')[0] : key;
-                if (!merged[name]) { merged[name] = {}; mergedStores[name] = new Set(); }
-                const store = csState.staffStore[key];
-                if (store) mergedStores[name].add(store);
-                for (const [wk, cell] of Object.entries(weekData)) {
-                    if (!merged[name][wk]) merged[name][wk] = { totalTickets: 0, multiCount: 0, totalItems: 0, revenue: 0 };
-                    merged[name][wk].totalTickets += cell.totalTickets;
-                    merged[name][wk].multiCount += cell.multiCount;
-                    merged[name][wk].totalItems += cell.totalItems;
-                    merged[name][wk].revenue += cell.revenue;
-                }
-            }
-            csState.data = merged;
-            csState.mergedStoresMap = {};
-            for (const [name, stores] of Object.entries(mergedStores)) {
-                csState.mergedStoresMap[name] = [...stores];
-            }
-        } else {
-            csState.mergedStoresMap = null;
-        }
-
-        renderCrossSellEvo();
-    }
-
-    function csCellValue(cellData, metricKey) {
-        if (!cellData) {
-            if (metricKey === 'pctMulti' || metricKey === 'avgItems') return '--';
-            if (metricKey === 'revenue') return formatCurrency(0);
-            return '0';
-        }
-        const { totalTickets, multiCount, totalItems, revenue } = cellData;
-        if (metricKey === 'pctMulti') return formatPctDetail(multiCount, totalTickets);
-        if (metricKey === 'avgItems') return totalTickets > 0 ? `${(totalItems / totalTickets).toFixed(1)} <small class="pct-units">(${totalItems}/${totalTickets})</small>` : '--';
-        if (metricKey === 'revenue') return formatCurrency(revenue || 0);
-        return cellData[metricKey] || 0;
-    }
-
-    function csRowTotal(weekData, metricKey, weeks) {
-        let sumTickets = 0, sumMulti = 0, sumItems = 0, sumRevenue = 0;
-        for (const wk of weeks) {
-            const c = weekData?.[wk]; if (!c) continue;
-            sumTickets += c.totalTickets; sumMulti += c.multiCount; sumItems += c.totalItems; sumRevenue += c.revenue;
-        }
-        if (metricKey === 'pctMulti') return formatPctDetail(sumMulti, sumTickets);
-        if (metricKey === 'avgItems') return sumTickets > 0 ? `${(sumItems / sumTickets).toFixed(1)} <small class="pct-units">(${sumItems}/${sumTickets})</small>` : '--';
-        if (metricKey === 'revenue') return formatCurrency(sumRevenue);
-        if (metricKey === 'totalTickets') return sumTickets;
-        if (metricKey === 'totalItems') return sumItems;
-        return sumMulti;
-    }
-
-    function csSortValue(key, col, metric, weeks) {
-        const wd = csState.data[key];
-        if (col === 'name') return (key.includes('\t') ? key.split('\t')[0] : key).toLowerCase();
-        if (col === 'store') return (csState.staffStore?.[key] || '').toLowerCase();
-        let cellData;
-        if (col === 'total') {
-            cellData = { totalTickets: 0, multiCount: 0, totalItems: 0, revenue: 0 };
-            for (const wk of weeks) { const c = wd?.[wk]; if (c) { cellData.totalTickets += c.totalTickets; cellData.multiCount += c.multiCount; cellData.totalItems += c.totalItems; cellData.revenue += c.revenue; } }
-        } else {
-            cellData = wd?.[col] || { totalTickets: 0, multiCount: 0, totalItems: 0, revenue: 0 };
-        }
-        if (metric === 'pctMulti') return cellData.totalTickets > 0 ? cellData.multiCount / cellData.totalTickets : -1;
-        if (metric === 'avgItems') return cellData.totalTickets > 0 ? cellData.totalItems / cellData.totalTickets : -1;
-        return cellData[metric] || 0;
-    }
-
-    function sortCrossSellEvo(col) {
-        if (csState.sortCol === col) {
-            csState.sortDir = csState.sortDir === 'desc' ? 'asc' : 'desc';
-        } else {
-            csState.sortCol = col;
-            csState.sortDir = 'desc';
-        }
-        renderCrossSellEvo();
-    }
-
-    function renderCrossSellEvo() {
-        const { data, weeks, scope, metric, sortCol, sortDir } = csState;
-        const thead = document.getElementById('cs-thead');
-        const tbody = document.getElementById('cs-tbody');
-        const tfoot = document.getElementById('cs-tfoot');
-
-        const sortCls = (col) => {
-            if (sortCol !== col) return '';
-            return sortDir === 'desc' ? ' sort-desc' : ' sort-asc';
-        };
-
-        const showStore = scope === 'staff';
-        const nameHeader = scope === 'store' ? 'Tienda' : 'Empleado';
-        thead.innerHTML = `<tr>
-            <th class="col-rank">#</th>
-            <th class="sortable${sortCls('name')}" data-cs-sort="name">${nameHeader}</th>
-            ${showStore ? `<th class="sortable${sortCls('store')}" data-cs-sort="store">Tienda</th>` : ''}
-            ${weeks.map(w => `<th class="sortable${sortCls(w)}" data-cs-sort="${w}">W${w}</th>`).join('')}
-            <th class="sortable col-total${sortCls('total')}" data-cs-sort="total"><strong>Total</strong></th>
-        </tr>`;
-
-        thead.querySelectorAll('th.sortable').forEach(th => {
-            th.addEventListener('click', () => {
-                const col = th.dataset.csSort;
-                sortCrossSellEvo(col === 'name' || col === 'total' || col === 'store' ? col : parseInt(col));
-            });
-        });
-
-        let keys = Object.keys(data);
-
-        if (keys.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${weeks.length + (showStore ? 4 : 3)}" class="empty-msg">Sin datos para estas semanas.</td></tr>`;
-            tfoot.innerHTML = '';
-            return;
-        }
-
-        const rankCol = sortCol || 'total';
-        const rankDir = sortCol ? sortDir : 'desc';
-        keys.sort((a, b) => {
-            const va = csSortValue(a, rankCol, metric, weeks);
-            const vb = csSortValue(b, rankCol, metric, weeks);
-            if (typeof va === 'string') return rankDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
-            return rankDir === 'asc' ? va - vb : vb - va;
-        });
-
-        // Filter by min operations for percentage/average metrics
-        if (metric === 'pctMulti' || metric === 'avgItems') {
-            const minOps = parseInt(document.getElementById('cs-min-ops').value) || 0;
-            if (minOps > 0) {
-                keys = keys.filter(key => {
-                    let total = 0;
-                    for (const wk of weeks) { total += data[key]?.[wk]?.totalTickets || 0; }
-                    return total >= minOps;
-                });
-            }
-        }
-
-        const topNVal = document.getElementById('cs-top-n').value;
-        if (topNVal !== 'all') keys = keys.slice(0, parseInt(topNVal));
-
-        const isMerged = !!csState.mergedStoresMap;
-        tbody.innerHTML = keys.map((key, idx) => {
-            const wd = data[key];
-            const selected = csState.selectedRow === key ? ' class="evo-row-selected"' : '';
-            const displayName = key.includes('\t') ? key.split('\t')[0] : key;
-            let nameHtml = escapeHtml(displayName);
-            let storeCell = '';
-            if (showStore) {
-                if (isMerged) {
-                    const stores = csState.mergedStoresMap[key] || [];
-                    storeCell = stores.length > 1
-                        ? `<td class="col-store"><span title="${stores.join(', ')}">${stores.length} tiendas</span></td>`
-                        : `<td class="col-store">${escapeHtml(stores[0] || '')}</td>`;
-                } else {
-                    const storeName = csState.staffStore?.[key] || '';
-                    const dupStores = csState.nameStoresMap?.[displayName];
-                    if (dupStores) {
-                        nameHtml += ` <span class="dup-mark" title="Tambien en: ${dupStores.filter(s => s !== storeName).join(', ')}">*</span>`;
-                    }
-                    storeCell = `<td class="col-store">${escapeHtml(storeName)}</td>`;
-                }
-            }
-            return `<tr${selected} data-cs-key="${escapeHtml(key)}">
-                <td class="col-rank">${idx + 1}</td>
-                <td>${nameHtml}</td>
-                ${storeCell}
-                ${weeks.map(w => `<td>${csCellValue(wd?.[w], metric)}</td>`).join('')}
-                <td class="col-total"><strong>${csRowTotal(wd || {}, metric, weeks)}</strong></td>
-            </tr>`;
-        }).join('');
-
-        if (keys.length > 1) {
-            const colTotals = {};
-            for (const w of weeks) {
-                colTotals[w] = { totalTickets: 0, multiCount: 0, totalItems: 0, revenue: 0 };
-                for (const key of keys) {
-                    const c = data[key]?.[w]; if (!c) continue;
-                    colTotals[w].totalTickets += c.totalTickets;
-                    colTotals[w].multiCount += c.multiCount;
-                    colTotals[w].totalItems += c.totalItems;
-                    colTotals[w].revenue += c.revenue || 0;
-                }
-            }
-            tfoot.innerHTML = `<tr data-cs-key="__TOTAL__">
-                <td class="col-rank"></td>
-                <td>TOTAL</td>
-                ${showStore ? '<td></td>' : ''}
-                ${weeks.map(w => `<td><strong>${csCellValue(colTotals[w], metric)}</strong></td>`).join('')}
-                <td class="col-total"><strong>${csRowTotal(colTotals, metric, weeks)}</strong></td>
-            </tr>`;
-        } else {
-            tfoot.innerHTML = '';
-        }
-
-        // Row click -> chart
-        function selectRow(key, tr) {
-            csState.selectedRow = csState.selectedRow === key ? null : key;
-            const table = document.getElementById('cs-table');
-            table.querySelectorAll('tr').forEach(r => r.classList.remove('evo-row-selected'));
-            if (csState.selectedRow) tr.classList.add('evo-row-selected');
-            const section = document.getElementById('cs-chart-section');
-            if (section.classList.contains('collapsed')) {
-                section.classList.remove('collapsed');
-                requestAnimationFrame(() => requestAnimationFrame(() => renderCsChart()));
-            } else {
-                renderCsChart();
-            }
-        }
-        document.querySelectorAll('#cs-table tr[data-cs-key]').forEach(tr => {
-            tr.style.cursor = 'pointer';
-            tr.addEventListener('click', () => selectRow(tr.dataset.csKey, tr));
-        });
-
-        // Conditional gradient for absolute metrics
-        if (metric !== 'pctMulti' && metric !== 'avgItems') {
-            const csExtractor = (cell) => cell?.[metric] || 0;
-            applyHeatmap('cs-table', data, weeks, csExtractor);
-        }
-    }
-
-    function toggleCsChart() {
-        const section = document.getElementById('cs-chart-section');
-        const isCollapsed = section.classList.contains('collapsed');
-        if (isCollapsed) {
-            section.classList.remove('collapsed');
-            requestAnimationFrame(() => requestAnimationFrame(() => renderCsChart()));
-        } else {
-            section.classList.add('collapsed');
-        }
-    }
-
-    function csChartValue(cellData, metricKey) {
-        if (!cellData) return 0;
-        const { totalTickets, multiCount, totalItems, revenue } = cellData;
-        if (metricKey === 'pctMulti') return totalTickets > 0 ? Math.round((multiCount / totalTickets) * 100) : 0;
-        if (metricKey === 'avgItems') return totalTickets > 0 ? parseFloat((totalItems / totalTickets).toFixed(1)) : 0;
-        if (metricKey === 'revenue') return revenue;
-        return cellData[metricKey] || 0;
-    }
-
-    function renderCsChart() {
-        if (typeof Chart === 'undefined') return;
-
-        const chartMetric = csState.metric;
-        const { data, weeks, scope } = csState;
-
-        const canvas = document.getElementById('cs-chart');
-        if (!canvas) return;
-
-        if (csChartInstance) { csChartInstance.destroy(); csChartInstance = null; }
-
-        const allKeys = Object.keys(data);
-        if (weeks.length === 0 || allKeys.length === 0) return;
-
-        const container = canvas.parentElement;
-        if (container.offsetHeight === 0) return;
-
-        const labels = weeks.map(w => `W${w}`);
-        const isPct = chartMetric === 'pctMulti';
-        const isCurrency = chartMetric === 'revenue';
-        const topNVal = document.getElementById('cs-top-n').value;
-        const maxLines = topNVal === 'all' ? 999 : parseInt(topNVal) || 999;
-
-        const colors = [
-            '#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed',
-            '#db2777', '#0891b2', '#65a30d', '#ea580c', '#6366f1',
-            '#be123c', '#0d9488', '#c026d3', '#ca8a04', '#475569'
-        ];
-
-        let datasets;
-        const selected = csState.selectedRow;
-
-        const computeTotal = (w) => {
-            let tt = 0, mc = 0, ti = 0, rv = 0;
-            for (const k of allKeys) { const c = data[k]?.[w]; if (!c) continue; tt += c.totalTickets; mc += c.multiCount; ti += c.totalItems; rv += c.revenue; }
-            return csChartValue({ totalTickets: tt, multiCount: mc, totalItems: ti, revenue: rv }, chartMetric);
-        };
-
-        if (selected === '__TOTAL__' || allKeys.length === 1) {
-            datasets = [{ label: 'Total', data: weeks.map(computeTotal), borderColor: colors[0], backgroundColor: colors[0] + '20', tension: 0.3, fill: true, pointRadius: 4 }];
-        } else if (selected && data[selected]) {
-            const selData = weeks.map(w => csChartValue(data[selected]?.[w], chartMetric));
-            const totalData = weeks.map(computeTotal);
-            const selLabel = (selected.includes('\t') ? selected.split('\t')[0] : selected).split(' ').slice(0, 2).join(' ');
-            datasets = [
-                { label: selLabel, data: selData, borderColor: colors[0], backgroundColor: colors[0] + '20', tension: 0.3, fill: true, pointRadius: 5, borderWidth: 3 },
-                { label: 'Total', data: totalData, borderColor: '#94a3b8', backgroundColor: 'transparent', tension: 0.3, pointRadius: 3, borderWidth: 1.5, borderDash: [4, 3] }
-            ];
-        } else {
-            const ranked = allKeys
-                .map(k => ({ name: k, val: csSortValue(k, 'total', chartMetric, weeks) }))
-                .sort((a, b) => b.val - a.val)
-                .slice(0, maxLines);
-            datasets = ranked.map(({ name }, i) => ({
-                label: (name.includes('\t') ? name.split('\t')[0] : name).split(' ').slice(0, 2).join(' '),
-                data: weeks.map(w => csChartValue(data[name]?.[w], chartMetric)),
-                borderColor: colors[i % colors.length],
-                backgroundColor: colors[i % colors.length] + '15',
-                tension: 0.3, pointRadius: 3, borderWidth: 2
-            }));
-        }
-
-        csChartInstance = new Chart(canvas, {
-            type: 'line',
-            data: { labels, datasets },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: { display: datasets.length > 1 && datasets.length <= 10, position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12, padding: 8 } },
-                    tooltip: { callbacks: { label: ctx => { const v = ctx.parsed.y; return `${ctx.dataset.label}: ${isPct ? v + '%' : isCurrency ? formatCurrency(v) : v}`; } } }
-                },
-                scales: {
-                    y: { beginAtZero: true, ticks: { font: { size: 9 }, color: '#94a3b8', callback: val => isPct ? val + '%' : isCurrency ? formatCurrency(val) : val }, grid: { color: '#f1f5f9' } },
-                    x: { ticks: { font: { size: 10 } }, grid: { display: false } }
-                }
-            }
-        });
+        const def = METRICS[metricKey];
+        if (!def) return 0;
+        const v = def.value(cellData);
+        return def.isPct ? Math.round(v) : (def.isCurrency ? Math.round(v) : v);
     }
 
     // ============================
@@ -1875,12 +1531,289 @@ const App = (() => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `kpitool_export_${datePart}_${timePart}.json.gz`;
+        a.download = `capimetrics_export_${datePart}_${timePart}.json.gz`;
         a.click();
         URL.revokeObjectURL(url);
 
         const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
         UI.addLog(`Backup exportado (${sizeMB} MB comprimido)`, 'success');
+    }
+
+    // ============================
+    // DASHBOARD: aggregation helpers
+    // ============================
+
+    // Aggregate records into per-store KPI buckets.
+    // Net sales = sum(sale.total) - sum(|refund.total|).
+    // Buys = sum(|cash buy.total|) + sum(|exchange.total|).
+    function aggregateByStore(records, excludeEcom) {
+        const byStore = {};
+        for (const r of records) {
+            if (excludeEcom && r.channel === 'ecom') continue;
+            const store = r.store || '?';
+            if (!byStore[store]) {
+                byStore[store] = {
+                    saleRevenue: 0, saleUnits: 0, saleTickets: new Set(),
+                    refundAmount: 0, cashBuyAmount: 0, exchangeAmount: 0
+                };
+            }
+            const agg = byStore[store];
+            const total = r.total || 0;
+            if (r.type === 'sale') {
+                agg.saleRevenue += total;
+                agg.saleUnits += (r.quantity || 0);
+                if (r.reference) agg.saleTickets.add(r.reference);
+            } else if (r.type === 'refund') {
+                agg.refundAmount += Math.abs(total);
+            } else if (r.type === 'cash buy') {
+                agg.cashBuyAmount += Math.abs(total);
+            } else if (r.type === 'exchange') {
+                agg.exchangeAmount += Math.abs(total);
+            }
+        }
+        const result = {};
+        for (const [store, agg] of Object.entries(byStore)) {
+            const buys = agg.cashBuyAmount + agg.exchangeAmount;
+            result[store] = {
+                netSales: agg.saleRevenue - agg.refundAmount,
+                grossSales: agg.saleRevenue,
+                refunds: agg.refundAmount,
+                units: agg.saleUnits,
+                tickets: agg.saleTickets.size,
+                buys,
+                cashBuys: agg.cashBuyAmount,
+                exchanges: agg.exchangeAmount,
+                pctVale: buys > 0 ? (agg.exchangeAmount / buys) * 100 : 0
+            };
+        }
+        return result;
+    }
+
+    function emptyStoreAgg() {
+        return {
+            netSales: 0, grossSales: 0, refunds: 0,
+            units: 0, tickets: 0,
+            buys: 0, cashBuys: 0, exchanges: 0, pctVale: 0
+        };
+    }
+
+    function weekDateRange(week) {
+        const courseStart = KPIEngine.getCourseStart();
+        const cs = courseStart.split('-');
+        const startMs = Date.UTC(cs[0], cs[1] - 1, cs[2]);
+        const fromMs = startMs + (week - 1) * 7 * 86400000;
+        const toMs = startMs + week * 7 * 86400000 - 86400000;
+        return {
+            from: new Date(fromMs).toISOString().substring(0, 10),
+            to: new Date(toMs).toISOString().substring(0, 10)
+        };
+    }
+
+    function updateWeekRangeLabel(elId, weekFrom, weekTo) {
+        const from = weekDateRange(weekFrom);
+        const to = weekDateRange(weekTo);
+        const el = document.getElementById(elId);
+        if (!el) return;
+        el.textContent = weekFrom === weekTo
+            ? `Semana ${weekFrom} (${UI.formatDate(from.from)} - ${UI.formatDate(from.to)})`
+            : `Semanas ${weekFrom}-${weekTo} (${UI.formatDate(from.from)} - ${UI.formatDate(to.to)})`;
+    }
+
+    // ============================
+    // DASHBOARD: GENERAL (Tiendas x KPIs)
+    // ============================
+    async function refreshDashGeneral() {
+        const today = new Date().toISOString().substring(0, 10);
+        const currentWeek = KPIEngine.helpers.businessWeek(today);
+        const fromEl = document.getElementById('dg-week-from');
+        const toEl = document.getElementById('dg-week-to');
+        if (!parseInt(toEl.value) || parseInt(toEl.value) < 1) {
+            fromEl.value = Math.max(1, currentWeek - 3);
+            toEl.value = currentWeek;
+        }
+        const weekFrom = parseInt(fromEl.value) || 1;
+        const weekTo = parseInt(toEl.value) || weekFrom;
+        const excludeEcom = document.getElementById('dg-exclude-ecom').checked;
+
+        updateWeekRangeLabel('dg-week-range', weekFrom, weekTo);
+
+        if (weekTo < weekFrom || weekTo - weekFrom > 52) {
+            document.getElementById('dg-tbody').innerHTML =
+                '<tr><td colspan="11" class="empty-msg">Rango de semanas no valido.</td></tr>';
+            return;
+        }
+
+        const allData = await Database.getOperationsForKPI({});
+        const rangeRecords = allData.filter(r => r.week >= weekFrom && r.week <= weekTo);
+        const agg = aggregateByStore(rangeRecords, excludeEcom);
+
+        const stores = Object.keys(agg).sort((a, b) => a.localeCompare(b));
+
+        const thead = document.getElementById('dg-thead');
+        thead.innerHTML = `<tr>
+            <th class="col-name">Tienda</th>
+            <th>Ventas</th>
+            <th>Compras</th>
+            <th title="% de compras hechas con vale de tienda (exchange)">% Vale</th>
+            <th>Socios</th>
+            <th>Stock</th>
+            <th>KPI 1</th>
+            <th>KPI 2</th>
+            <th>KPI 3</th>
+            <th>KPI 4</th>
+            <th>KPI 5</th>
+        </tr>`;
+
+        const tbody = document.getElementById('dg-tbody');
+        if (!stores.length) {
+            tbody.innerHTML = '<tr><td colspan="11" class="empty-msg">Sin datos para esta semana.</td></tr>';
+            document.getElementById('dg-tfoot').innerHTML = '';
+            return;
+        }
+
+        let totNet = 0, totBuys = 0, totCashBuys = 0, totExch = 0;
+        let html = '';
+        for (const store of stores) {
+            const a = agg[store];
+            totNet += a.netSales;
+            totBuys += a.buys;
+            totCashBuys += a.cashBuys;
+            totExch += a.exchanges;
+            html += `<tr>
+                <td class="col-name">${escapeHtml(store)}</td>
+                <td>${formatCurrency(a.netSales)}</td>
+                <td>${formatCurrency(a.buys)}</td>
+                <td>${a.buys > 0 ? Math.round(a.pctVale) + '%' : '--'}</td>
+                <td class="cell-empty">--</td>
+                <td class="cell-empty">--</td>
+                <td class="cell-empty">--</td>
+                <td class="cell-empty">--</td>
+                <td class="cell-empty">--</td>
+                <td class="cell-empty">--</td>
+                <td class="cell-empty">--</td>
+            </tr>`;
+        }
+        tbody.innerHTML = html;
+
+        const totPct = totBuys > 0 ? Math.round((totExch / totBuys) * 100) : 0;
+        document.getElementById('dg-tfoot').innerHTML = `<tr class="row-total">
+            <td class="col-name"><strong>TOTAL</strong></td>
+            <td><strong>${formatCurrency(totNet)}</strong></td>
+            <td><strong>${formatCurrency(totBuys)}</strong></td>
+            <td><strong>${totBuys > 0 ? totPct + '%' : '--'}</strong></td>
+            <td class="cell-empty">--</td>
+            <td class="cell-empty">--</td>
+            <td class="cell-empty">--</td>
+            <td class="cell-empty">--</td>
+            <td class="cell-empty">--</td>
+            <td class="cell-empty">--</td>
+            <td class="cell-empty">--</td>
+        </tr>`;
+    }
+
+    // ============================
+    // DASHBOARD: DETAIL (Tiendas x Categoria)
+    // ============================
+    async function refreshDashDetail() {
+        const today = new Date().toISOString().substring(0, 10);
+        const currentWeek = KPIEngine.helpers.businessWeek(today);
+        const weekEl = document.getElementById('dd-week');
+        if (!parseInt(weekEl.value) || parseInt(weekEl.value) < 1) {
+            weekEl.value = currentWeek;
+        }
+        const week = parseInt(weekEl.value) || 1;
+        const metric = document.getElementById('dd-metric').value;
+        const excludeEcom = document.getElementById('dd-exclude-ecom').checked;
+
+        updateWeekRangeLabel('dd-week-range', week, week);
+
+        const allData = await Database.getOperationsForKPI({});
+        const weekRecords = allData.filter(r => r.week === week);
+
+        // Aggregate by store x category
+        const byStoreCat = {};
+        const allCategories = new Set();
+        const allStores = new Set();
+
+        for (const r of weekRecords) {
+            if (excludeEcom && r.channel === 'ecom') continue;
+            const store = r.store || '?';
+            const cat = r.category || 'Sin categoria';
+            allStores.add(store);
+            allCategories.add(cat);
+
+            if (!byStoreCat[store]) byStoreCat[store] = {};
+            if (!byStoreCat[store][cat]) {
+                byStoreCat[store][cat] = { netSales: 0, units: 0, tickets: new Set(), buys: 0 };
+            }
+            const bucket = byStoreCat[store][cat];
+            const total = r.total || 0;
+            if (r.type === 'sale') {
+                bucket.netSales += total;
+                bucket.units += (r.quantity || 0);
+                if (r.reference) bucket.tickets.add(r.reference);
+            } else if (r.type === 'refund') {
+                bucket.netSales -= Math.abs(total);
+            } else if (r.type === 'cash buy' || r.type === 'exchange') {
+                bucket.buys += Math.abs(total);
+            }
+        }
+
+        const stores = [...allStores].sort((a, b) => a.localeCompare(b));
+        const categories = [...allCategories].sort((a, b) => a.localeCompare(b));
+
+        const thead = document.getElementById('dd-thead');
+        const tbody = document.getElementById('dd-tbody');
+        const tfoot = document.getElementById('dd-tfoot');
+
+        if (!stores.length || !categories.length) {
+            thead.innerHTML = '<tr><th>Tienda</th></tr>';
+            tbody.innerHTML = '<tr><td class="empty-msg">Sin datos para esta semana.</td></tr>';
+            tfoot.innerHTML = '';
+            return;
+        }
+
+        const isCurrency = metric === 'netSales' || metric === 'buys';
+        const extract = (bucket) => {
+            if (!bucket) return 0;
+            if (metric === 'tickets') return bucket.tickets.size;
+            return bucket[metric] || 0;
+        };
+        const fmt = (v) => isCurrency ? formatCurrency(v) : (v || 0).toLocaleString('es-ES');
+
+        // Header
+        let head = '<tr><th class="col-name">Tienda</th>';
+        for (const cat of categories) head += `<th>${escapeHtml(cat)}</th>`;
+        head += '<th class="col-shaded">Total</th></tr>';
+        thead.innerHTML = head;
+
+        // Body
+        let html = '';
+        const colTotals = new Array(categories.length).fill(0);
+        let grandTotal = 0;
+
+        for (const store of stores) {
+            let rowTotal = 0;
+            let row = `<tr><td class="col-name">${escapeHtml(store)}</td>`;
+            categories.forEach((cat, i) => {
+                const v = extract(byStoreCat[store]?.[cat]);
+                rowTotal += v;
+                colTotals[i] += v;
+                row += `<td>${v ? fmt(v) : '<span class="cell-zero">--</span>'}</td>`;
+            });
+            grandTotal += rowTotal;
+            row += `<td class="col-shaded"><strong>${rowTotal ? fmt(rowTotal) : '--'}</strong></td></tr>`;
+            html += row;
+        }
+        tbody.innerHTML = html;
+
+        // Footer totals
+        let foot = '<tr class="row-total"><td class="col-name"><strong>TOTAL</strong></td>';
+        colTotals.forEach(v => {
+            foot += `<td><strong>${v ? fmt(v) : '--'}</strong></td>`;
+        });
+        foot += `<td class="col-shaded"><strong>${grandTotal ? fmt(grandTotal) : '--'}</strong></td></tr>`;
+        tfoot.innerHTML = foot;
     }
 
     // ============================

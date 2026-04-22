@@ -141,7 +141,8 @@ const CSVParser = (() => {
      * Only keeps fields needed for KPIs: reference, type, category,
      * date, store, staff, quantity, price, total.
      * Discards: product, serial, sku, till, _raw.
-     * Discards rows of type transfer or refund.
+     * Discards rows of type transfer (stock internal moves).
+     * Refunds ARE kept now (needed for net sales = gross - refunds).
      */
     function mapRecord(raw, mapping, source) {
         const record = {};
@@ -171,8 +172,8 @@ const CSVParser = (() => {
             record.type = record.type.trim().toLowerCase();
         }
 
-        // Discard transfers and refunds
-        if (record.type === 'transfer' || record.type === 'refund') {
+        // Discard transfers (internal stock moves, not relevant for sales/buys KPIs)
+        if (record.type === 'transfer') {
             return null;
         }
 
