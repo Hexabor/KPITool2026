@@ -29,10 +29,23 @@ const App = (() => {
                 if (el) el.value = UI.formatDate(savedCourseStart);
             }
 
+            const savedEcomConfig = await Database.getSetting('ecomConfigByKpi');
+            if (savedEcomConfig && typeof savedEcomConfig === 'object') {
+                for (const k of Object.keys(ECOM_CONFIG)) {
+                    if (Object.prototype.hasOwnProperty.call(savedEcomConfig, k)) {
+                        ECOM_CONFIG[k] = !!savedEcomConfig[k];
+                    }
+                }
+            }
+
             // Drive (non-blocking)
             const driveClientId = await Database.getSetting('driveClientId');
             const driveApiKey = await Database.getSetting('driveApiKey');
             if (driveClientId) DriveSync.init(driveClientId, driveApiKey);
+
+            // Category -> Supercategory mapping (non-blocking: if it fails,
+            // every category falls back to "Sin mapear")
+            loadSupercategoryMapping().catch(e => console.warn('Supercat mapping load failed:', e));
         } catch (e) {
             console.error('Init settings error (non-fatal):', e);
         }
@@ -111,6 +124,7 @@ const App = (() => {
 
         // Store selects (searchable)
         initStoreSelect('kpi-panel-store', 'kpi-panel-store-list', refreshEvolution);
+        initStoreSelect('kpi-panel-staff', 'kpi-panel-staff-list', refreshEvolution, { allLabel: 'Todos los empleados' });
 
         // Vista tienda/empleado filters (evolucion semanal unificada)
         document.getElementById('evo-week-from').addEventListener('change', refreshEvolution);
@@ -121,18 +135,22 @@ const App = (() => {
             refreshEvolution();
         });
         document.getElementById('evo-min-ops').addEventListener('change', refreshEvolution);
-        document.getElementById('evo-scope').addEventListener('change', refreshEvolution);
+        document.getElementById('evo-scope').addEventListener('change', () => {
+            updateEvoScopeVisibility();
+            refreshEvolution();
+        });
 
-        // Top N + ecom filter + chart toggle
+        // Top N + merge-stores + chart toggle
         document.getElementById('evo-top-n').addEventListener('change', refreshEvolution);
-        document.getElementById('evo-exclude-ecom')?.addEventListener('change', refreshEvolution);
         document.getElementById('evo-merge-stores')?.addEventListener('change', refreshEvolution);
         document.getElementById('btn-toggle-chart').addEventListener('click', toggleEvoChart);
+
+        // KPI multi-select (compare mode)
+        initEvoKpiMultiSelect();
 
         // Dashboard: general
         document.getElementById('dg-week-from').addEventListener('change', refreshDashGeneral);
         document.getElementById('dg-week-to').addEventListener('change', refreshDashGeneral);
-        document.getElementById('dg-exclude-ecom').addEventListener('change', refreshDashGeneral);
 
         // Dashboard: detail
         document.getElementById('dd-week-from').addEventListener('change', refreshDashDetail);
@@ -141,10 +159,13 @@ const App = (() => {
             ddState.lastAutoMetric = null;  // force recompute of top 5 if not touched
             refreshDashDetail();
         });
-        document.getElementById('dd-exclude-ecom').addEventListener('change', refreshDashDetail);
 
-        // Detail: multi-select dropdowns
+        // Detail + Vista general: multi-select dropdowns
         initMultiSelectHandlers();
+        initStoreGroupsAllInstances();
+        initDashGeneralKpiPicker();
+        initCategoryInfoPopover();
+        initDashDetailControls();
 
         // Changelog
         document.getElementById('btn-changelog').addEventListener('click', openChangelog);
@@ -283,10 +304,15 @@ const App = (() => {
     // ============================
     const storeSelects = {};
 
-    function initStoreSelect(inputId, listId, onChange) {
+    function initStoreSelect(inputId, listId, onChange, opts) {
         const input = document.getElementById(inputId);
         const list = document.getElementById(listId);
-        const state = { stores: [], value: 'all', onChange };
+        const state = {
+            stores: [],
+            value: 'all',
+            onChange,
+            allLabel: (opts && opts.allLabel) || 'Todas las tiendas'
+        };
         storeSelects[inputId] = state;
 
         input.addEventListener('focus', () => {
@@ -319,7 +345,7 @@ const App = (() => {
         const list = document.getElementById(inputId + '-list');
         const filter = input.value.toLowerCase();
 
-        const options = [{ value: 'all', label: 'Todas las tiendas' }];
+        const options = [{ value: 'all', label: state.allLabel }];
         for (const s of state.stores) {
             options.push({ value: s, label: s });
         }
@@ -345,7 +371,7 @@ const App = (() => {
         const state = storeSelects[inputId];
         const input = document.getElementById(inputId);
         input.value = state.value === 'all' ? '' : state.value;
-        input.placeholder = state.value === 'all' ? 'Todas las tiendas' : state.value;
+        input.placeholder = state.value === 'all' ? state.allLabel : state.value;
     }
 
     function populateStoreSelect(inputId, stores) {
@@ -374,6 +400,9 @@ const App = (() => {
     async function refreshDashStore() {
         const stores = await Database.getDistinctValues('store');
         populateStoreSelect('kpi-panel-store', stores);
+        const staff = (await Database.getDistinctValues('staff')).filter(s => s && s !== 'N/A');
+        populateStoreSelect('kpi-panel-staff', staff);
+        updateEvoScopeVisibility();
 
         const fromEl = document.getElementById('evo-week-from');
         const toEl = document.getElementById('evo-week-to');
@@ -404,11 +433,20 @@ const App = (() => {
     // ============================
     // METRIC REGISTRY (unificado Ventas + Moviles + Compras)
     // ============================
+    // Buckets now carry a "NoEcom" variant of every field affected by ecom
+    // (cash buy / exchange are never ecom, so they stay single-valued).
+    // Each metric declares a filterEcom flag (live, from Configuracion) that
+    // selects which variant its value()/format() uses.
     function emptyBucket() {
         return {
-            saleRevenue: 0, saleUnits: 0, refundAmount: 0,
-            ticketRefs: {},
-            mobiles: 0, mobilesTotal: 0, services: 0, basics: 0,
+            saleRevenue: 0, saleRevenueNoEcom: 0,
+            saleUnits: 0, saleUnitsNoEcom: 0,
+            refundAmount: 0, refundAmountNoEcom: 0,
+            ticketRefs: {}, ticketRefsNoEcom: {},
+            mobiles: 0, mobilesNoEcom: 0,
+            mobilesTotal: 0, mobilesTotalNoEcom: 0,
+            services: 0, servicesNoEcom: 0,
+            basics: 0, basicsNoEcom: 0,
             cashBuyAmount: 0, exchangeAmount: 0
         };
     }
@@ -417,18 +455,34 @@ const App = (() => {
         const total = r.total || 0;
         const qty = r.quantity || 0;
         const catLower = (r.category || '').toLowerCase();
+        const isEcom = r.channel === 'ecom';
         if (r.type === 'sale') {
             if ((r.price || 0) > 0) {
                 b.saleRevenue += total;
                 b.saleUnits += qty;
                 const ref = r.reference || `_noref_${r.id || Math.random()}`;
                 b.ticketRefs[ref] = (b.ticketRefs[ref] || 0) + 1;
+                if (!isEcom) {
+                    b.saleRevenueNoEcom += total;
+                    b.saleUnitsNoEcom += qty;
+                    b.ticketRefsNoEcom[ref] = (b.ticketRefsNoEcom[ref] || 0) + 1;
+                }
             }
-            if (catLower.includes('moviles')) { b.mobiles += qty; b.mobilesTotal += total; }
-            if (catLower.includes('services')) { b.services += qty; }
-            if (catLower.includes('basics')) { b.basics += qty; }
+            if (catLower.includes('moviles')) {
+                b.mobiles += qty; b.mobilesTotal += total;
+                if (!isEcom) { b.mobilesNoEcom += qty; b.mobilesTotalNoEcom += total; }
+            }
+            if (catLower.includes('services')) {
+                b.services += qty;
+                if (!isEcom) b.servicesNoEcom += qty;
+            }
+            if (catLower.includes('basics')) {
+                b.basics += qty;
+                if (!isEcom) b.basicsNoEcom += qty;
+            }
         } else if (r.type === 'refund') {
             b.refundAmount += Math.abs(total);
+            if (!isEcom) b.refundAmountNoEcom += Math.abs(total);
         } else if (r.type === 'cash buy') {
             b.cashBuyAmount += Math.abs(total);
         } else if (r.type === 'exchange') {
@@ -438,79 +492,158 @@ const App = (() => {
 
     function mergeBuckets(dst, src) {
         dst.saleRevenue += src.saleRevenue;
+        dst.saleRevenueNoEcom += src.saleRevenueNoEcom;
         dst.saleUnits += src.saleUnits;
+        dst.saleUnitsNoEcom += src.saleUnitsNoEcom;
         dst.refundAmount += src.refundAmount;
+        dst.refundAmountNoEcom += src.refundAmountNoEcom;
         for (const [ref, c] of Object.entries(src.ticketRefs)) {
             dst.ticketRefs[ref] = (dst.ticketRefs[ref] || 0) + c;
         }
+        for (const [ref, c] of Object.entries(src.ticketRefsNoEcom || {})) {
+            dst.ticketRefsNoEcom[ref] = (dst.ticketRefsNoEcom[ref] || 0) + c;
+        }
         dst.mobiles += src.mobiles;
+        dst.mobilesNoEcom += src.mobilesNoEcom;
         dst.mobilesTotal += src.mobilesTotal;
+        dst.mobilesTotalNoEcom += src.mobilesTotalNoEcom;
         dst.services += src.services;
+        dst.servicesNoEcom += src.servicesNoEcom;
         dst.basics += src.basics;
+        dst.basicsNoEcom += src.basicsNoEcom;
         dst.cashBuyAmount += src.cashBuyAmount;
         dst.exchangeAmount += src.exchangeAmount;
     }
 
-    function bucketTickets(b) { return b ? Object.keys(b.ticketRefs).length : 0; }
-    function bucketMultiTickets(b) { return b ? Object.values(b.ticketRefs).filter(c => c > 1).length : 0; }
+    // Field picker: returns NoEcom version when the metric filters ecom.
+    // Falls back to the base field for compras (no NoEcom variant exists).
+    function bf(b, field, fe) {
+        if (fe) {
+            const v = b[field + 'NoEcom'];
+            if (v !== undefined) return v;
+        }
+        return b[field];
+    }
+    function bucketTickets(b, fe) {
+        if (!b) return 0;
+        const refs = fe && b.ticketRefsNoEcom ? b.ticketRefsNoEcom : b.ticketRefs;
+        return refs ? Object.keys(refs).length : 0;
+    }
+    function bucketMultiTickets(b, fe) {
+        if (!b) return 0;
+        const refs = fe && b.ticketRefsNoEcom ? b.ticketRefsNoEcom : b.ticketRefs;
+        return refs ? Object.values(refs).filter(c => c > 1).length : 0;
+    }
 
-    const METRICS = {
+    // Live per-KPI ecom-filter config. Loaded from Dexie on boot, editable in Configuracion.
+    // Hardcoded defaults match the conventional meaning of each metric.
+    const ECOM_DEFAULTS = {
+        netSales: false, grossSales: false, refundsAmount: false, totalItems: false,
+        tickets: true, multiTickets: true, pctMulti: true, avgItems: true,
+        mobiles: true, mobilesTotal: true, services: true, pctServices: true,
+        basics: true, pctBasics: true, pctCombo: true,
+        buys: false, cashBuys: false, exchanges: false, pctVale: false  // inert (no ecom variant)
+    };
+    const ECOM_CONFIG = { ...ECOM_DEFAULTS };
+    // Families for the Settings UI. Compras family is excluded (ecom has no effect there).
+    const ECOM_CONFIGURABLE_GROUPS = [
+        { family: 'Ventas', keys: ['netSales', 'grossSales', 'refundsAmount', 'totalItems', 'tickets', 'multiTickets', 'pctMulti', 'avgItems'] },
+        { family: 'Moviles', keys: ['mobiles', 'mobilesTotal', 'services', 'pctServices', 'basics', 'pctBasics', 'pctCombo'] }
+    ];
+    function metricFiltersEcom(key) { return !!ECOM_CONFIG[key]; }
+
+    // Category -> Supercategory mapping (loaded from data/ at init)
+    const CATEGORY_SUPERCATEGORY = {};   // { category: supercategory }
+    let SUPERCATEGORY_LIST = [];          // declared order from the JSON + "Sin mapear" if needed
+    const UNMAPPED_SUPER = 'Sin mapear';
+    let supercategoryLoadPromise = null;  // memoized loader; consumers await it
+    function loadSupercategoryMapping() {
+        if (supercategoryLoadPromise) return supercategoryLoadPromise;
+        supercategoryLoadPromise = (async () => {
+            const res = await fetch('data/categories-supercategories.json', { cache: 'no-cache' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (data && data.mapping && typeof data.mapping === 'object') {
+                for (const [cat, sup] of Object.entries(data.mapping)) {
+                    CATEGORY_SUPERCATEGORY[cat] = sup;
+                }
+            }
+            if (Array.isArray(data.supercategories)) {
+                SUPERCATEGORY_LIST = data.supercategories.slice();
+            } else {
+                SUPERCATEGORY_LIST = [...new Set(Object.values(CATEGORY_SUPERCATEGORY))];
+            }
+        })();
+        // Clear promise on failure so a later caller can retry.
+        supercategoryLoadPromise.catch(() => { supercategoryLoadPromise = null; });
+        return supercategoryLoadPromise;
+    }
+    function getSupercategory(category) {
+        if (!category) return UNMAPPED_SUPER;
+        return CATEGORY_SUPERCATEGORY[category] || UNMAPPED_SUPER;
+    }
+
+    // Raw metric definitions: each value/format/minOpsOf receives (b, fe).
+    // A wrapper below injects the live fe from ECOM_CONFIG so callers still
+    // invoke def.value(b) / def.format(v, b) as before.
+    const RAW_METRICS = {
         // Ventas
         netSales:      { label: 'Ventas netas',          isCurrency: true,
-            value: b => b.saleRevenue - b.refundAmount,
+            value: (b, fe) => bf(b, 'saleRevenue', fe) - bf(b, 'refundAmount', fe),
             format: v => formatCurrency(v) },
         grossSales:    { label: 'Ventas brutas',         isCurrency: true,
-            value: b => b.saleRevenue,
+            value: (b, fe) => bf(b, 'saleRevenue', fe),
             format: v => formatCurrency(v) },
         refundsAmount: { label: 'Refunds',               isCurrency: true,
-            value: b => b.refundAmount,
+            value: (b, fe) => bf(b, 'refundAmount', fe),
             format: v => formatCurrency(v) },
         totalItems:    { label: 'Articulos vendidos',
-            value: b => b.saleUnits,
+            value: (b, fe) => bf(b, 'saleUnits', fe),
             format: v => (v || 0).toLocaleString('es-ES') },
         tickets:       { label: 'Tickets',
-            value: b => bucketTickets(b),
+            value: (b, fe) => bucketTickets(b, fe),
             format: v => (v || 0).toLocaleString('es-ES') },
         multiTickets:  { label: 'Tickets multiples',
-            value: b => bucketMultiTickets(b),
+            value: (b, fe) => bucketMultiTickets(b, fe),
             format: v => (v || 0).toLocaleString('es-ES') },
         pctMulti:      { label: '% Venta complementaria', isPct: true,
-            minOpsOf: b => bucketTickets(b),
-            value: b => { const t = bucketTickets(b); return t > 0 ? (bucketMultiTickets(b) / t) * 100 : 0; },
-            format: (v, b) => formatPctDetail(bucketMultiTickets(b), bucketTickets(b)) },
+            minOpsOf: (b, fe) => bucketTickets(b, fe),
+            value: (b, fe) => { const t = bucketTickets(b, fe); return t > 0 ? (bucketMultiTickets(b, fe) / t) * 100 : 0; },
+            format: (v, b, fe) => formatPctDetail(bucketMultiTickets(b, fe), bucketTickets(b, fe)) },
         avgItems:      { label: 'Media articulos/ticket', isPct: true,
-            minOpsOf: b => bucketTickets(b),
-            value: b => { const t = bucketTickets(b); return t > 0 ? b.saleUnits / t : 0; },
-            format: (v, b) => {
-                const t = bucketTickets(b);
-                return t > 0 ? `${(b.saleUnits / t).toFixed(1)} <small class="pct-units">(${b.saleUnits}/${t})</small>` : '--';
+            minOpsOf: (b, fe) => bucketTickets(b, fe),
+            value: (b, fe) => { const t = bucketTickets(b, fe); return t > 0 ? bf(b, 'saleUnits', fe) / t : 0; },
+            format: (v, b, fe) => {
+                const t = bucketTickets(b, fe);
+                const u = bf(b, 'saleUnits', fe);
+                return t > 0 ? `${(u / t).toFixed(1)} <small class="pct-units">(${u}/${t})</small>` : '--';
             } },
         // Moviles
         mobiles:       { label: 'Moviles (uds)',
-            value: b => b.mobiles,
+            value: (b, fe) => bf(b, 'mobiles', fe),
             format: v => (v || 0).toLocaleString('es-ES') },
         mobilesTotal:  { label: 'Moviles (EUR)',         isCurrency: true,
-            value: b => b.mobilesTotal,
+            value: (b, fe) => bf(b, 'mobilesTotal', fe),
             format: v => formatCurrency(v) },
         services:      { label: 'Protectores de gel',
-            value: b => b.services,
+            value: (b, fe) => bf(b, 'services', fe),
             format: v => (v || 0).toLocaleString('es-ES') },
         pctServices:   { label: '% Gel/Movil',           isPct: true,
-            minOpsOf: b => b.mobiles,
-            value: b => b.mobiles > 0 ? (b.services / b.mobiles) * 100 : 0,
-            format: (v, b) => formatPctDetail(b.services, b.mobiles) },
+            minOpsOf: (b, fe) => bf(b, 'mobiles', fe),
+            value: (b, fe) => { const m = bf(b, 'mobiles', fe); return m > 0 ? (bf(b, 'services', fe) / m) * 100 : 0; },
+            format: (v, b, fe) => formatPctDetail(bf(b, 'services', fe), bf(b, 'mobiles', fe)) },
         basics:        { label: 'Basics',
-            value: b => b.basics,
+            value: (b, fe) => bf(b, 'basics', fe),
             format: v => (v || 0).toLocaleString('es-ES') },
         pctBasics:     { label: '% Basics/Movil',        isPct: true,
-            minOpsOf: b => b.mobiles,
-            value: b => b.mobiles > 0 ? (b.basics / b.mobiles) * 100 : 0,
-            format: (v, b) => formatPctDetail(b.basics, b.mobiles) },
+            minOpsOf: (b, fe) => bf(b, 'mobiles', fe),
+            value: (b, fe) => { const m = bf(b, 'mobiles', fe); return m > 0 ? (bf(b, 'basics', fe) / m) * 100 : 0; },
+            format: (v, b, fe) => formatPctDetail(bf(b, 'basics', fe), bf(b, 'mobiles', fe)) },
         pctCombo:      { label: '% Combo/Movil',         isPct: true,
-            minOpsOf: b => b.mobiles,
-            value: b => b.mobiles > 0 ? ((b.services + b.basics) / b.mobiles) * 100 : 0,
-            format: (v, b) => formatPctDetail(b.services + b.basics, b.mobiles) },
-        // Compras
+            minOpsOf: (b, fe) => bf(b, 'mobiles', fe),
+            value: (b, fe) => { const m = bf(b, 'mobiles', fe); return m > 0 ? ((bf(b, 'services', fe) + bf(b, 'basics', fe)) / m) * 100 : 0; },
+            format: (v, b, fe) => formatPctDetail(bf(b, 'services', fe) + bf(b, 'basics', fe), bf(b, 'mobiles', fe)) },
+        // Compras (ecom no aplica: no hay cash buys/exchanges online)
         buys:          { label: 'Compras (EUR)',         isCurrency: true,
             value: b => b.cashBuyAmount + b.exchangeAmount,
             format: v => formatCurrency(v) },
@@ -528,6 +661,21 @@ const App = (() => {
             } }
     };
 
+    // Wrap each raw metric so callers keep using def.value(b), def.format(v, b),
+    // def.minOpsOf(b). The live filterEcom flag is injected from ECOM_CONFIG.
+    const METRICS = {};
+    for (const [key, raw] of Object.entries(RAW_METRICS)) {
+        METRICS[key] = {
+            key,
+            label: raw.label,
+            isPct: raw.isPct,
+            isCurrency: raw.isCurrency,
+            value: (b) => raw.value(b, metricFiltersEcom(key)),
+            format: (v, b) => raw.format(v, b, metricFiltersEcom(key)),
+            minOpsOf: raw.minOpsOf ? (b) => raw.minOpsOf(b, metricFiltersEcom(key)) : undefined
+        };
+    }
+
     // ============================
     // EVOLUTION TABLE
     // ============================
@@ -538,27 +686,210 @@ const App = (() => {
         metric: 'netSales',
         sortCol: null,
         sortDir: 'desc',
-        selectedStaff: null  // clicked row for chart highlight
+        selectedStaff: null,  // clicked row for chart highlight
+        // Compare-KPIs mode
+        compareMode: false,
+        compareSubject: null,     // name of the fixed subject (staff or store)
+        compareWeekData: null,    // {weekN: bucket} for that subject
+        selectedKpis: null        // Set<metricKey>, null until initialized
     };
 
-    // Dashboard: General state (sort)
+    // Default KPIs to show in compare mode (registry order within these)
+    const DEFAULT_COMPARE_KPIS = ['netSales', 'tickets', 'pctMulti', 'mobiles', 'pctServices', 'pctVale'];
+
+    function initEvoKpiMultiSelect() {
+        const trigger = document.getElementById('evo-kpi-trigger');
+        const panel = document.getElementById('evo-kpi-panel');
+        if (!trigger || !panel) return;
+
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            panel.classList.toggle('open');
+        });
+        document.addEventListener('click', (e) => {
+            if (!panel.contains(e.target) && !trigger.contains(e.target)) {
+                panel.classList.remove('open');
+            }
+        });
+
+        document.getElementById('evo-kpi-all').addEventListener('change', (e) => {
+            evoState.selectedKpis = e.target.checked
+                ? new Set(Object.keys(METRICS))
+                : new Set();
+            updateEvoKpiUI();
+            refreshEvolution();
+        });
+
+        document.getElementById('evo-kpi-search').addEventListener('input', renderEvoKpiList);
+
+        document.getElementById('evo-kpi-list').addEventListener('change', (e) => {
+            if (!e.target.matches('input[type="checkbox"]')) return;
+            const key = e.target.dataset.value;
+            if (!evoState.selectedKpis) evoState.selectedKpis = new Set(DEFAULT_COMPARE_KPIS);
+            if (e.target.checked) evoState.selectedKpis.add(key);
+            else evoState.selectedKpis.delete(key);
+            updateEvoKpiUI();
+            refreshEvolution();
+        });
+
+        document.getElementById('evo-kpi-reset').addEventListener('click', () => {
+            evoState.selectedKpis = new Set(DEFAULT_COMPARE_KPIS);
+            updateEvoKpiUI();
+            refreshEvolution();
+        });
+    }
+
+    function renderEvoKpiList() {
+        const listEl = document.getElementById('evo-kpi-list');
+        const searchEl = document.getElementById('evo-kpi-search');
+        if (!listEl) return;
+        const term = ((searchEl && searchEl.value) || '').toLowerCase();
+        if (!evoState.selectedKpis) evoState.selectedKpis = new Set(DEFAULT_COMPARE_KPIS);
+        const keys = Object.keys(METRICS);
+        const filtered = term
+            ? keys.filter(k => METRICS[k].label.toLowerCase().includes(term))
+            : keys;
+        if (!filtered.length) {
+            listEl.innerHTML = '<div class="multi-select-option" style="color:var(--color-text-lighter);justify-content:center;">Sin coincidencias</div>';
+            return;
+        }
+        listEl.innerHTML = filtered.map(k => {
+            const checked = evoState.selectedKpis.has(k) ? 'checked' : '';
+            return `<label class="multi-select-option">
+                <input type="checkbox" data-value="${k}" ${checked}>
+                <span class="multi-select-option-label">${escapeHtml(METRICS[k].label)}</span>
+            </label>`;
+        }).join('');
+    }
+
+    function updateEvoKpiUI() {
+        if (!evoState.selectedKpis) evoState.selectedKpis = new Set(DEFAULT_COMPARE_KPIS);
+        const total = Object.keys(METRICS).length;
+        const n = evoState.selectedKpis.size;
+        const countEl = document.getElementById('evo-kpi-count');
+        const allCb = document.getElementById('evo-kpi-all');
+        if (countEl) countEl.textContent = `${n}/${total}`;
+        if (allCb) allCb.checked = n === total && total > 0;
+        renderEvoKpiList();
+    }
+
+    function updateEvoScopeVisibility() {
+        const scope = document.getElementById('evo-scope').value;
+        const staffWrap = document.getElementById('kpi-panel-staff-wrap');
+        if (staffWrap) staffWrap.classList.toggle('hidden', scope !== 'staff');
+    }
+
+    function updateEvoModeVisibility() {
+        const compare = !!evoState.compareMode;
+        document.querySelectorAll('#section-dash-store .evo-single-only').forEach(el => {
+            el.classList.toggle('hidden', compare);
+        });
+        document.querySelectorAll('#section-dash-store .evo-compare-only').forEach(el => {
+            el.classList.toggle('hidden', !compare);
+        });
+        const chartBtn = document.getElementById('btn-toggle-chart');
+        const chartSection = document.getElementById('evo-chart-section');
+        if (chartBtn) {
+            chartBtn.disabled = compare;
+            chartBtn.title = compare ? 'No aplica al comparar KPIs (usa las sparklines por fila)' : '';
+        }
+        if (compare && chartSection) chartSection.classList.add('collapsed');
+    }
+
+    function renderSparkline(values, width, height) {
+        width = width || 120;
+        height = height || 22;
+        const nums = values.map(v => (typeof v === 'number' && isFinite(v)) ? v : null);
+        const valid = nums.filter(v => v !== null);
+        if (valid.length < 2) {
+            return `<svg class="evo-sparkline" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"></svg>`;
+        }
+        const min = Math.min.apply(null, valid);
+        const max = Math.max.apply(null, valid);
+        const range = max - min || 1;
+        const pad = 2;
+        const innerW = width - pad * 2;
+        const innerH = height - pad * 2;
+        const step = nums.length > 1 ? innerW / (nums.length - 1) : 0;
+        const pointY = (v) => pad + innerH - ((v - min) / range) * innerH;
+        const segs = [];
+        let cur = [];
+        nums.forEach((v, i) => {
+            if (v === null) {
+                if (cur.length > 1) segs.push(cur);
+                cur = [];
+            } else {
+                cur.push(`${(pad + i * step).toFixed(1)},${pointY(v).toFixed(1)}`);
+            }
+        });
+        if (cur.length > 1) segs.push(cur);
+        let svgInner = segs.map(s => `<polyline points="${s.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />`).join('');
+        for (let i = nums.length - 1; i >= 0; i--) {
+            if (nums[i] !== null) {
+                svgInner += `<circle cx="${(pad + i * step).toFixed(1)}" cy="${pointY(nums[i]).toFixed(1)}" r="2" fill="currentColor" />`;
+                break;
+            }
+        }
+        return `<svg class="evo-sparkline" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${svgInner}</svg>`;
+    }
+
+    // Dashboard: General state (sort + store multi-select filter + column selection)
+    // Saved store groups live in a shared module-level state (STORE_GROUPS) so
+    // Vista general and Vista detalle share the same groups.
     let dgState = {
         sortCol: null,
-        sortDir: 'desc'
+        sortDir: 'desc',
+        visibleStores: null,   // Set<string>; null = "all" fallback until first render
+        storesTouched: false,
+        allStores: [],
+        columns: null,         // ordered array of METRICS keys; null = use default
+        columnsLoaded: false
     };
 
-    // Dashboard: Detail state (sort + multi-select filters)
+    // Default columns for Vista general (current defaults as approved)
+    const DG_DEFAULT_COLUMNS = ['netSales', 'buys', 'pctVale', 'pctMulti', 'pctServices', 'pctBasics'];
+
+    // Short labels used in the Vista general header (overrides METRICS.label for compactness)
+    const DG_COLUMN_LABELS = {
+        netSales:      { label: 'Ventas',         title: 'Ventas netas = ventas brutas - refunds' },
+        grossSales:    { label: 'V. brutas',      title: 'Ventas brutas (sum de sales)' },
+        refundsAmount: { label: 'Refunds',        title: 'Importe de refunds' },
+        totalItems:    { label: 'Articulos',      title: 'Articulos vendidos' },
+        tickets:       { label: 'Tickets',        title: 'Numero de tickets unicos' },
+        multiTickets:  { label: 'T. multiples',   title: 'Tickets con >1 linea' },
+        pctMulti:      { label: '% Venta compl.', title: 'Tickets con >1 linea / tickets totales' },
+        avgItems:      { label: 'Art/tck',        title: 'Media de articulos por ticket' },
+        mobiles:       { label: 'Moviles',        title: 'Moviles vendidos (uds)' },
+        mobilesTotal:  { label: 'Moviles EUR',    title: 'Importe total de moviles' },
+        services:      { label: 'Services',       title: 'Services vendidos (uds)' },
+        pctServices:   { label: '% Gel/Mvl',      title: 'Services / moviles' },
+        basics:        { label: 'Basics',         title: 'Basics vendidos (uds)' },
+        pctBasics:     { label: '% Basics/Mvl',   title: 'Basics / moviles' },
+        pctCombo:      { label: '% Combo/Mvl',    title: '(Services + Basics) / moviles' },
+        buys:          { label: 'Compras',        title: 'Cash buy + exchange' },
+        cashBuys:      { label: 'Cash buys',      title: 'Compras en efectivo' },
+        exchanges:     { label: 'Exchanges',      title: 'Compras en vale' },
+        pctVale:       { label: '% Vale',         title: '% de compras hechas con vale de tienda (exchange)' }
+    };
+
+    // Dashboard: Detail state (sort + multi-select filters + grouping + axis)
     let ddState = {
         sortCol: null,
         sortDir: 'desc',
+        groupBy: 'cat',        // 'cat' | 'sup' — columns (or rows, when swapped) level
+        axisMode: 'store-rows',// 'store-rows' | 'group-rows'
+        configLoaded: false,
         visibleCats: null,     // Set<string> of selected categories; null = "all" fallback
         visibleStores: null,   // Set<string>
+        visibleSupers: null,   // Set<string> of selected supercategories; null = "all" fallback
         catsTouched: false,    // user manually altered category selection
         storesTouched: false,
+        supersTouched: false,
         allCats: [],           // full list seen last render (for the panel UI)
         allStores: [],
+        allSupers: [],
         lastAutoMetric: null,  // metric used to compute default top 5 last time
-        lastAutoRange: null    // "weekFrom-weekTo" key for default recompute check
+        lastAutoRange: null    // "weekFrom-weekTo-groupBy-axis" key for default recompute check
     };
 
     async function refreshEvolution() {
@@ -581,6 +912,19 @@ const App = (() => {
         evoState.metric = document.getElementById('evo-metric').value;
         evoState.scope = document.getElementById('evo-scope').value;
         const store = getStoreValue('kpi-panel-store');
+        const staffPick = evoState.scope === 'staff' ? getStoreValue('kpi-panel-staff') : 'all';
+
+        // Compare-KPIs mode: active when a single subject is fixed
+        let compareSubject = null;
+        if (evoState.scope === 'store' && store && store !== 'all') compareSubject = store;
+        else if (evoState.scope === 'staff' && staffPick && staffPick !== 'all') compareSubject = staffPick;
+        evoState.compareMode = !!compareSubject;
+        evoState.compareSubject = compareSubject;
+        if (!evoState.selectedKpis) {
+            evoState.selectedKpis = new Set(DEFAULT_COMPARE_KPIS);
+            updateEvoKpiUI();
+        }
+        updateEvoModeVisibility();
 
         // Persist week range
         await Database.setSetting('evoWeekFrom', weekFrom);
@@ -615,9 +959,26 @@ const App = (() => {
         if (store && store !== 'all') {
             records = records.filter(r => r.store === store);
         }
-        const excludeEcom = document.getElementById('evo-exclude-ecom')?.checked;
-        if (excludeEcom) {
-            records = records.filter(r => r.channel !== 'ecom');
+        // Ecom filtering is per-KPI (see Configuracion): buckets store both
+        // variants, metrics pick the right one. No record-level filter here.
+
+        // Compare-KPIs branch: aggregate one bucket per week for the fixed subject
+        if (evoState.compareMode) {
+            evoState.compareWeekData = {};
+            for (const r of records) {
+                const wk = r.week;
+                if (wk < weekFrom || wk > weekTo) continue;
+                if (evoState.scope === 'staff') {
+                    // Filter to the selected staff; exclude types not attributable to staff
+                    if ((r.staff || 'N/A') !== compareSubject) continue;
+                    if (r.type === 'cash buy' || r.type === 'exchange' || r.type === 'refund') continue;
+                }
+                // scope=store: records already filtered by store above
+                if (!evoState.compareWeekData[wk]) evoState.compareWeekData[wk] = emptyBucket();
+                addToBucket(evoState.compareWeekData[wk], r);
+            }
+            renderCompareKPIs();
+            return;
         }
 
         evoState.staffWeekData = {};
@@ -733,6 +1094,69 @@ const App = (() => {
         const bucket = emptyBucket();
         for (const wk of weeks) { const c = weekData[wk]; if (c) mergeBuckets(bucket, c); }
         return def.format(def.value(bucket), bucket);
+    }
+
+    function renderCompareKPIs() {
+        const { compareSubject, compareWeekData, weeks, scope } = evoState;
+        const thead = document.getElementById('evo-thead');
+        const tbody = document.getElementById('evo-tbody');
+        const tfoot = document.getElementById('evo-tfoot');
+
+        const selectedKeys = Object.keys(METRICS).filter(k => evoState.selectedKpis.has(k));
+        const colCount = weeks.length + 3;
+        const subjectLabel = scope === 'store' ? 'Tienda' : 'Empleado';
+
+        thead.innerHTML = `<tr>
+            <th>KPI <span class="col-subject-hint">(${escapeHtml(subjectLabel)}: ${escapeHtml(compareSubject)})</span></th>
+            <th class="col-spark">Evolucion</th>
+            ${weeks.map(w => `<th>W${w}</th>`).join('')}
+            <th class="col-total"><strong>Total</strong></th>
+        </tr>`;
+
+        if (!selectedKeys.length) {
+            tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-msg">Selecciona al menos un KPI en el filtro.</td></tr>`;
+            tfoot.innerHTML = '';
+            return;
+        }
+        if (!weeks.length) {
+            tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-msg">Sin semanas en el rango.</td></tr>`;
+            tfoot.innerHTML = '';
+            return;
+        }
+
+        const weekBuckets = weeks.map(w => compareWeekData?.[w] || null);
+        const anyData = weekBuckets.some(b => b);
+
+        if (!anyData) {
+            tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-msg">Sin datos para "${escapeHtml(compareSubject)}" en el rango seleccionado.</td></tr>`;
+            tfoot.innerHTML = '';
+            return;
+        }
+
+        tbody.innerHTML = selectedKeys.map(mk => {
+            const def = METRICS[mk];
+            const rawVals = weekBuckets.map(b => {
+                if (!b) return null;
+                if (def.isPct && def.minOpsOf && def.minOpsOf(b) === 0) return null;
+                return def.value(b);
+            });
+            const spark = renderSparkline(rawVals);
+            const cells = weekBuckets.map(b => {
+                if (!b) return `<td class="cell-empty">${def.isPct ? '--' : (def.isCurrency ? formatCurrency(0) : '0')}</td>`;
+                return `<td>${def.format(def.value(b), b)}</td>`;
+            }).join('');
+            const totalBucket = emptyBucket();
+            for (const b of weekBuckets) if (b) mergeBuckets(totalBucket, b);
+            const totalCell = def.format(def.value(totalBucket), totalBucket);
+            return `<tr>
+                <td class="evo-kpi-name">${escapeHtml(def.label)}</td>
+                <td class="col-spark">${spark}</td>
+                ${cells}
+                <td class="col-total"><strong>${totalCell}</strong></td>
+            </tr>`;
+        }).join('');
+
+        tfoot.innerHTML = '';
     }
 
     function renderEvolution() {
@@ -944,7 +1368,7 @@ const App = (() => {
         const chartMetric = evoState.metric;
         const { staffWeekData, weeks, scope } = evoState;
 
-        document.getElementById('evo-chart-info').title = CHART_METRIC_INFO[chartMetric] || '';
+        document.getElementById('evo-chart-info').dataset.tip = CHART_METRIC_INFO[chartMetric] || '';
 
         const canvas = document.getElementById('evo-chart');
         if (!canvas) { console.error('Canvas not found'); return; }
@@ -1021,6 +1445,22 @@ const App = (() => {
                 pointRadius: 3,
                 borderWidth: 2
             }));
+
+            // Always include an aggregate Total line for context (skip for pct metrics:
+            // summing percentages across subjects makes no sense).
+            if (!isPct) {
+                const totalData = weeks.map(w => evoChartValue(totalBucketAtWeek(w), chartMetric));
+                datasets.push({
+                    label: scope === 'store' ? 'Total' : 'Total tienda',
+                    data: totalData,
+                    borderColor: '#64748b',
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                    pointRadius: 3,
+                    borderWidth: 1.5,
+                    borderDash: [5, 4]
+                });
+            }
         }
 
         evoChartInstance = new Chart(canvas, {
@@ -1059,7 +1499,7 @@ const App = (() => {
                             align: 'end'
                         },
                         grid: { color: '#f1f5f9' },
-                        afterFit: (axis) => { axis.width = Y_AXIS_WIDTH; }
+                        afterFit: (axis) => { axis.width = 55; }
                     },
                     x: {
                         ticks: { font: { size: 10 } },
@@ -1421,10 +1861,46 @@ const App = (() => {
         if (saved) document.getElementById('course-start-date').value = UI.formatDate(saved);
         updateCourseStartInfo();
 
+        renderEcomConfigUI();
+
         if (DriveSync.isConnected()) {
             const info = await DriveSync.getBackupInfo();
             UI.updateDriveStatus(info ? `Conectado. Ultimo backup: ${info.lastModified}` : 'Conectado.');
         }
+    }
+
+    function renderEcomConfigUI() {
+        const container = document.getElementById('kpi-ecom-config');
+        if (!container) return;
+        const html = ECOM_CONFIGURABLE_GROUPS.map(group => {
+            const rows = group.keys.map(k => {
+                const def = METRICS[k];
+                if (!def) return '';
+                const checked = ECOM_CONFIG[k] ? 'checked' : '';
+                return `<label class="ecom-kpi-row">
+                    <input type="checkbox" data-kpi-ecom="${k}" ${checked}>
+                    <span>${escapeHtml(def.label)}</span>
+                </label>`;
+            }).join('');
+            return `<div class="ecom-kpi-group">
+                <h4>${escapeHtml(group.family)}</h4>
+                <div class="ecom-kpi-rows">${rows}</div>
+            </div>`;
+        }).join('');
+        container.innerHTML = html;
+
+        container.querySelectorAll('input[data-kpi-ecom]').forEach(cb => {
+            cb.addEventListener('change', async (e) => {
+                const k = e.target.dataset.kpiEcom;
+                ECOM_CONFIG[k] = e.target.checked;
+                // Persist only the configurable keys (don't pollute storage with Compras inert flags)
+                const toSave = {};
+                for (const g of ECOM_CONFIGURABLE_GROUPS) {
+                    for (const key of g.keys) toSave[key] = !!ECOM_CONFIG[key];
+                }
+                await Database.setSetting('ecomConfigByKpi', toSave);
+            });
+        });
     }
 
     async function saveCourseStart() {
@@ -1584,58 +2060,17 @@ const App = (() => {
     // DASHBOARD: aggregation helpers
     // ============================
 
-    // Aggregate records into per-store KPI buckets.
-    // Net sales = sum(sale.total) - sum(|refund.total|).
-    // Buys = sum(|cash buy.total|) + sum(|exchange.total|).
-    function aggregateByStore(records, excludeEcom) {
-        const byStore = {};
+    // Aggregate records into per-store buckets using the unified bucket.
+    // Returns { storeName: bucket }. Callers use METRICS[k].value(b) / .format(v, b)
+    // to extract values, which respect the live per-KPI ecom config.
+    function aggregateByStore(records) {
+        const byStoreBucket = {};
         for (const r of records) {
-            if (excludeEcom && r.channel === 'ecom') continue;
             const store = r.store || '?';
-            if (!byStore[store]) {
-                byStore[store] = {
-                    saleRevenue: 0, saleUnits: 0, saleTickets: new Set(),
-                    refundAmount: 0, cashBuyAmount: 0, exchangeAmount: 0
-                };
-            }
-            const agg = byStore[store];
-            const total = r.total || 0;
-            if (r.type === 'sale') {
-                agg.saleRevenue += total;
-                agg.saleUnits += (r.quantity || 0);
-                if (r.reference) agg.saleTickets.add(r.reference);
-            } else if (r.type === 'refund') {
-                agg.refundAmount += Math.abs(total);
-            } else if (r.type === 'cash buy') {
-                agg.cashBuyAmount += Math.abs(total);
-            } else if (r.type === 'exchange') {
-                agg.exchangeAmount += Math.abs(total);
-            }
+            if (!byStoreBucket[store]) byStoreBucket[store] = emptyBucket();
+            addToBucket(byStoreBucket[store], r);
         }
-        const result = {};
-        for (const [store, agg] of Object.entries(byStore)) {
-            const buys = agg.cashBuyAmount + agg.exchangeAmount;
-            result[store] = {
-                netSales: agg.saleRevenue - agg.refundAmount,
-                grossSales: agg.saleRevenue,
-                refunds: agg.refundAmount,
-                units: agg.saleUnits,
-                tickets: agg.saleTickets.size,
-                buys,
-                cashBuys: agg.cashBuyAmount,
-                exchanges: agg.exchangeAmount,
-                pctVale: buys > 0 ? (agg.exchangeAmount / buys) * 100 : 0
-            };
-        }
-        return result;
-    }
-
-    function emptyStoreAgg() {
-        return {
-            netSales: 0, grossSales: 0, refunds: 0,
-            units: 0, tickets: 0,
-            buys: 0, cashBuys: 0, exchanges: 0, pctVale: 0
-        };
+        return byStoreBucket;
     }
 
     function weekDateRange(week) {
@@ -1703,7 +2138,9 @@ const App = (() => {
         // Toggle panels (and close others when one opens)
         const cfg = [
             { trigger: 'dd-cat-trigger', panel: 'dd-cat-panel' },
-            { trigger: 'dd-store-trigger', panel: 'dd-store-panel' }
+            { trigger: 'dd-store-trigger', panel: 'dd-store-panel' },
+            { trigger: 'dd-sup-trigger', panel: 'dd-sup-panel' },
+            { trigger: 'dg-store-trigger', panel: 'dg-store-panel' }
         ];
         cfg.forEach(({ trigger, panel }) => {
             document.getElementById(trigger).addEventListener('click', (e) => {
@@ -1737,6 +2174,22 @@ const App = (() => {
             ddState.storesTouched = true;
             refreshDashDetail();
         });
+        document.getElementById('dg-store-all').addEventListener('change', (e) => {
+            if (e.target.checked) dgState.visibleStores = new Set(dgState.allStores);
+            else dgState.visibleStores = new Set();
+            dgState.storesTouched = true;
+            refreshDashGeneral();
+        });
+        document.getElementById('dd-sup-all').addEventListener('change', (e) => {
+            if (e.target.checked) ddState.visibleSupers = new Set(ddState.allSupers);
+            else ddState.visibleSupers = new Set();
+            ddState.supersTouched = true;
+            // Supers change invalidates the category selection: let the default
+            // top-5 logic recompute within the new scope.
+            ddState.catsTouched = false;
+            ddState.lastAutoMetric = null;
+            refreshDashDetail();
+        });
 
         // Search inputs
         document.getElementById('dd-cat-search').addEventListener('input', (e) => {
@@ -1744,6 +2197,9 @@ const App = (() => {
         });
         document.getElementById('dd-store-search').addEventListener('input', (e) => {
             renderMultiSelectList('dd-store-list', ddState.allStores, ddState.visibleStores, e.target.value.toLowerCase(), 'store');
+        });
+        document.getElementById('dg-store-search').addEventListener('input', (e) => {
+            renderMultiSelectList('dg-store-list', dgState.allStores, dgState.visibleStores, e.target.value.toLowerCase(), 'dg-store');
         });
 
         // Reset to top 5 for categories
@@ -1774,6 +2230,29 @@ const App = (() => {
                 refreshDashDetail();
             }
         });
+        document.getElementById('dg-store-list').addEventListener('change', (e) => {
+            if (e.target.matches('input[type="checkbox"]')) {
+                const value = e.target.dataset.value;
+                if (!dgState.visibleStores) dgState.visibleStores = new Set();
+                if (e.target.checked) dgState.visibleStores.add(value);
+                else dgState.visibleStores.delete(value);
+                dgState.storesTouched = true;
+                refreshDashGeneral();
+            }
+        });
+        document.getElementById('dd-sup-list').addEventListener('change', (e) => {
+            if (e.target.matches('input[type="checkbox"]')) {
+                const value = e.target.dataset.value;
+                if (!ddState.visibleSupers) ddState.visibleSupers = new Set();
+                if (e.target.checked) ddState.visibleSupers.add(value);
+                else ddState.visibleSupers.delete(value);
+                ddState.supersTouched = true;
+                // Same reason as the "all" handler above: let top-5 recompute
+                ddState.catsTouched = false;
+                ddState.lastAutoMetric = null;
+                refreshDashDetail();
+            }
+        });
     }
 
     function renderMultiSelectList(listId, items, selectedSet, searchTerm, kind) {
@@ -1795,14 +2274,25 @@ const App = (() => {
     }
 
     function updateMultiSelectUI(kind) {
-        const isCat = kind === 'cat';
-        const listId = isCat ? 'dd-cat-list' : 'dd-store-list';
-        const countId = isCat ? 'dd-cat-count' : 'dd-store-count';
-        const searchId = isCat ? 'dd-cat-search' : 'dd-store-search';
-        const allCbId = isCat ? 'dd-cat-all' : 'dd-store-all';
-        const items = isCat ? ddState.allCats : ddState.allStores;
-        const selected = isCat ? ddState.visibleCats : ddState.visibleStores;
-        const searchVal = document.getElementById(searchId).value.toLowerCase();
+        let listId, countId, searchId, allCbId, items, selected;
+        if (kind === 'cat') {
+            listId = 'dd-cat-list'; countId = 'dd-cat-count';
+            searchId = 'dd-cat-search'; allCbId = 'dd-cat-all';
+            items = ddState.allCats; selected = ddState.visibleCats;
+        } else if (kind === 'dg-store') {
+            listId = 'dg-store-list'; countId = 'dg-store-count';
+            searchId = 'dg-store-search'; allCbId = 'dg-store-all';
+            items = dgState.allStores; selected = dgState.visibleStores;
+        } else if (kind === 'sup') {
+            listId = 'dd-sup-list'; countId = 'dd-sup-count';
+            searchId = null; allCbId = 'dd-sup-all';
+            items = ddState.allSupers; selected = ddState.visibleSupers;
+        } else {
+            listId = 'dd-store-list'; countId = 'dd-store-count';
+            searchId = 'dd-store-search'; allCbId = 'dd-store-all';
+            items = ddState.allStores; selected = ddState.visibleStores;
+        }
+        const searchVal = searchId ? document.getElementById(searchId).value.toLowerCase() : '';
         renderMultiSelectList(listId, items, selected, searchVal, kind);
         const nSel = selected ? selected.size : 0;
         document.getElementById(countId).textContent = `${nSel}/${items.length}`;
@@ -1826,14 +2316,19 @@ const App = (() => {
     function resetDashboardFilters() {
         dgState.sortCol = null;
         dgState.sortDir = 'desc';
+        dgState.visibleStores = null;
+        dgState.storesTouched = false;
         ddState.sortCol = null;
         ddState.sortDir = 'desc';
         ddState.visibleCats = null;
         ddState.visibleStores = null;
+        ddState.visibleSupers = null;
         ddState.catsTouched = false;
         ddState.storesTouched = false;
+        ddState.supersTouched = false;
         ddState.lastAutoMetric = null;
         ddState.lastAutoRange = null;
+        // Keep groupBy / axisMode across data reloads; they're user preferences.
     }
 
     function sortDashGeneral(col) {
@@ -1846,7 +2341,426 @@ const App = (() => {
         refreshDashGeneral();
     }
 
+    // --- Store groups (shared across Vista general + Vista detalle) ----------
+    // Groups are persisted once (setting `storeGroups`) and rendered into each
+    // view's own "Tiendas" multi-select panel. Selection state per view stays
+    // independent: each view picks which stores it shows; groups are a tool
+    // to quickly switch that selection.
+    const STORE_GROUPS = { groups: [], loaded: false };
+    const storeGroupsInstances = [];
+
+    async function loadStoreGroups() {
+        if (STORE_GROUPS.loaded) return;
+        let saved = await Database.getSetting('storeGroups');
+        if (!Array.isArray(saved)) {
+            // One-time migration from the older Vista-general-only key
+            const legacy = await Database.getSetting('dgStoreGroups');
+            if (Array.isArray(legacy) && legacy.length) {
+                saved = legacy;
+                await Database.setSetting('storeGroups', legacy);
+            }
+        }
+        if (Array.isArray(saved)) {
+            STORE_GROUPS.groups = saved.filter(g => g && g.name && Array.isArray(g.stores));
+        }
+        STORE_GROUPS.loaded = true;
+    }
+
+    async function saveStoreGroups() {
+        await Database.setSetting('storeGroups', STORE_GROUPS.groups);
+    }
+
+    function registerStoreGroupsInstance(cfg) {
+        // cfg = { prefix, getVisibleStores, setVisibleStores, getAllStores, refresh }
+        const instance = { ...cfg, managing: false };
+        storeGroupsInstances.push(instance);
+        return instance;
+    }
+
+    function renderStoreGroupsUIFor(inst) {
+        const { prefix } = inst;
+        const select = document.getElementById(`${prefix}-groups-select`);
+        const manageBtn = document.getElementById(`${prefix}-groups-manage`);
+        const list = document.getElementById(`${prefix}-groups-list`);
+        if (!select || !manageBtn || !list) return;
+
+        const opts = ['<option value="">-- Aplicar grupo --</option>'];
+        for (const g of STORE_GROUPS.groups) {
+            opts.push(`<option value="${escapeHtml(g.id)}">${escapeHtml(g.name)} (${g.stores.length})</option>`);
+        }
+        select.innerHTML = opts.join('');
+        select.value = '';
+
+        manageBtn.textContent = inst.managing ? 'Cerrar gestion' : 'Gestionar grupos...';
+
+        if (inst.managing) {
+            list.classList.remove('hidden');
+            if (!STORE_GROUPS.groups.length) {
+                list.innerHTML = '<div class="store-groups-empty">No hay grupos guardados.</div>';
+            } else {
+                list.innerHTML = STORE_GROUPS.groups.map(g =>
+                    `<div class="store-group-row" data-group-id="${escapeHtml(g.id)}">
+                        <span class="store-group-name" title="${g.stores.map(escapeHtml).join(', ')}">${escapeHtml(g.name)}</span>
+                        <span class="store-group-count">${g.stores.length}</span>
+                        <button type="button" class="store-group-btn" data-action="rename" title="Renombrar">Renombrar</button>
+                        <button type="button" class="store-group-btn" data-action="update" title="Actualizar con la seleccion actual">Actualizar</button>
+                        <button type="button" class="store-group-btn store-group-btn-danger" data-action="delete" title="Eliminar">Eliminar</button>
+                    </div>`
+                ).join('');
+            }
+        } else {
+            list.classList.add('hidden');
+        }
+    }
+
+    // Re-render the group toolbar/list on every registered view (used after
+    // create/update/delete so both views stay in sync).
+    function renderAllStoreGroupsUI() {
+        for (const inst of storeGroupsInstances) renderStoreGroupsUIFor(inst);
+    }
+
+    function initStoreGroupsInstanceHandlers(inst) {
+        const { prefix, getVisibleStores, setVisibleStores, getAllStores, refresh } = inst;
+        const select = document.getElementById(`${prefix}-groups-select`);
+        const saveBtn = document.getElementById(`${prefix}-groups-save`);
+        const manageBtn = document.getElementById(`${prefix}-groups-manage`);
+        const list = document.getElementById(`${prefix}-groups-list`);
+        if (!select || !saveBtn || !manageBtn || !list) return;
+
+        select.addEventListener('change', () => {
+            const id = select.value;
+            if (!id) return;
+            const g = STORE_GROUPS.groups.find(x => x.id === id);
+            if (!g) return;
+            // Apply only stores currently available in this view's data
+            const all = getAllStores();
+            const validSet = new Set(g.stores.filter(s => all.includes(s)));
+            setVisibleStores(validSet);
+            select.value = '';
+            refresh();
+        });
+
+        saveBtn.addEventListener('click', async () => {
+            const selected = [...(getVisibleStores() || [])];
+            if (!selected.length) {
+                alert('Selecciona al menos una tienda antes de guardar un grupo.');
+                return;
+            }
+            const name = (prompt('Nombre del grupo:') || '').trim();
+            if (!name) return;
+            const existing = STORE_GROUPS.groups.find(g => g.name.toLowerCase() === name.toLowerCase());
+            if (existing) {
+                if (!confirm(`Ya existe un grupo llamado "${existing.name}". Sobrescribir?`)) return;
+                existing.stores = selected;
+            } else {
+                STORE_GROUPS.groups.push({
+                    id: 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                    name,
+                    stores: selected
+                });
+            }
+            await saveStoreGroups();
+            renderAllStoreGroupsUI();
+        });
+
+        manageBtn.addEventListener('click', () => {
+            inst.managing = !inst.managing;
+            renderStoreGroupsUIFor(inst);
+        });
+
+        list.addEventListener('click', async (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            const row = btn.closest('[data-group-id]');
+            const id = row && row.dataset.groupId;
+            const group = STORE_GROUPS.groups.find(g => g.id === id);
+            if (!group) return;
+
+            const action = btn.dataset.action;
+            if (action === 'rename') {
+                const newName = (prompt('Nuevo nombre:', group.name) || '').trim();
+                if (!newName || newName === group.name) return;
+                const conflict = STORE_GROUPS.groups.find(g => g.id !== id && g.name.toLowerCase() === newName.toLowerCase());
+                if (conflict) { alert('Ya existe un grupo con ese nombre.'); return; }
+                group.name = newName;
+            } else if (action === 'update') {
+                const selected = [...(getVisibleStores() || [])];
+                if (!selected.length) { alert('Selecciona al menos una tienda antes de actualizar.'); return; }
+                if (!confirm(`Actualizar "${group.name}" con la seleccion actual (${selected.length} tiendas)?`)) return;
+                group.stores = selected;
+            } else if (action === 'delete') {
+                if (!confirm(`Eliminar el grupo "${group.name}"?`)) return;
+                STORE_GROUPS.groups = STORE_GROUPS.groups.filter(g => g.id !== id);
+            }
+            await saveStoreGroups();
+            renderAllStoreGroupsUI();
+        });
+    }
+
+    function initStoreGroupsAllInstances() {
+        // Vista general
+        registerStoreGroupsInstance({
+            prefix: 'dg',
+            getVisibleStores: () => dgState.visibleStores,
+            setVisibleStores: (set) => { dgState.visibleStores = set; dgState.storesTouched = true; },
+            getAllStores: () => dgState.allStores,
+            refresh: () => refreshDashGeneral()
+        });
+        // Vista detalle
+        registerStoreGroupsInstance({
+            prefix: 'dd',
+            getVisibleStores: () => ddState.visibleStores,
+            setVisibleStores: (set) => { ddState.visibleStores = set; ddState.storesTouched = true; },
+            getAllStores: () => ddState.allStores,
+            refresh: () => refreshDashDetail()
+        });
+        for (const inst of storeGroupsInstances) initStoreGroupsInstanceHandlers(inst);
+    }
+
+    // --- Column selection (Vista general) -----------------------------------
+    async function loadDashGeneralColumns() {
+        if (dgState.columnsLoaded) return;
+        const saved = await Database.getSetting('dgColumns');
+        if (Array.isArray(saved) && saved.length) {
+            // Keep only keys that still exist in METRICS
+            dgState.columns = saved.filter(k => METRICS[k]);
+        }
+        if (!dgState.columns || !dgState.columns.length) {
+            dgState.columns = [...DG_DEFAULT_COLUMNS];
+        }
+        dgState.columnsLoaded = true;
+    }
+
+    async function saveDashGeneralColumns() {
+        await Database.setSetting('dgColumns', dgState.columns);
+    }
+
+    // The full ordered list used for the picker: active ones first (in their
+    // order) followed by inactive ones, preserving registry order within each.
+    function dgPickerEntries() {
+        const active = dgState.columns || [];
+        const inactive = Object.keys(METRICS).filter(k => !active.includes(k));
+        return [
+            ...active.map(k => ({ key: k, active: true })),
+            ...inactive.map(k => ({ key: k, active: false }))
+        ];
+    }
+
+    function renderDashGeneralKpiPanel() {
+        const list = document.getElementById('dg-kpi-list');
+        const count = document.getElementById('dg-kpi-count');
+        if (!list || !count) return;
+        const total = Object.keys(METRICS).length;
+        count.textContent = `${(dgState.columns || []).length}/${total}`;
+
+        const entries = dgPickerEntries();
+        list.innerHTML = entries.map((e, idx) => {
+            const def = DG_COLUMN_LABELS[e.key] || { label: METRICS[e.key].label, title: METRICS[e.key].label };
+            const canUp = idx > 0;
+            const canDown = idx < entries.length - 1;
+            return `<div class="dg-kpi-row${e.active ? ' active' : ''}" data-key="${escapeHtml(e.key)}">
+                <input type="checkbox" data-role="toggle" ${e.active ? 'checked' : ''}>
+                <span class="dg-kpi-name" title="${escapeHtml(def.title)}">${escapeHtml(def.label)}</span>
+                <button type="button" class="dg-kpi-move" data-role="up" ${canUp ? '' : 'disabled'} title="Subir">&uarr;</button>
+                <button type="button" class="dg-kpi-move" data-role="down" ${canDown ? '' : 'disabled'} title="Bajar">&darr;</button>
+            </div>`;
+        }).join('');
+    }
+
+    // --- Category / Supercategory info popover (Vista detalle) ---------------
+    function renderCategoryInfoPopover() {
+        const body = document.getElementById('dd-cat-info-body');
+        const searchEl = document.getElementById('dd-cat-info-search');
+        if (!body) return;
+        const term = (searchEl && searchEl.value || '').toLowerCase().trim();
+
+        // Build supercategory -> [categories] groups. Use SUPERCATEGORY_LIST order,
+        // plus any extra supers seen in mapping, plus "Sin mapear" bucket at the end.
+        const orderedSupers = SUPERCATEGORY_LIST.length ? [...SUPERCATEGORY_LIST] : [];
+        const byS = {};
+        for (const s of orderedSupers) byS[s] = [];
+        for (const [cat, sup] of Object.entries(CATEGORY_SUPERCATEGORY)) {
+            if (!byS[sup]) { byS[sup] = []; orderedSupers.push(sup); }
+            byS[sup].push(cat);
+        }
+        // Sort categories alphabetically inside each super
+        for (const s of orderedSupers) byS[s].sort((a, b) => a.localeCompare(b, 'es'));
+
+        if (!orderedSupers.length) {
+            body.innerHTML = '<div class="info-popover-empty">El mapping no se cargo. Revisa data/categories-supercategories.json.</div>';
+            return;
+        }
+
+        body.innerHTML = orderedSupers.map(sup => {
+            const cats = byS[sup] || [];
+            const matching = term ? cats.filter(c => c.toLowerCase().includes(term)) : cats;
+            if (!matching.length) return '';
+            return `<div class="info-popover-group">
+                <div class="info-popover-super">${escapeHtml(sup)} <span class="info-popover-count">(${cats.length})</span></div>
+                <div class="info-popover-cats">${matching.map(c => `<span class="info-popover-cat">${escapeHtml(c)}</span>`).join('')}</div>
+            </div>`;
+        }).join('') || '<div class="info-popover-empty">Sin coincidencias.</div>';
+    }
+
+    // --- Vista detalle: group-by segmented + axis swap ----------------------
+    async function loadDashDetailConfig() {
+        if (ddState.configLoaded) return;
+        const gb = await Database.getSetting('ddGroupBy');
+        const ax = await Database.getSetting('ddAxisMode');
+        if (gb === 'cat' || gb === 'sup') ddState.groupBy = gb;
+        if (ax === 'store-rows' || ax === 'group-rows') ddState.axisMode = ax;
+        ddState.configLoaded = true;
+    }
+
+    function updateDashDetailControlsUI() {
+        // Segmented
+        const buttons = document.querySelectorAll('#dd-groupby .segmented-btn');
+        buttons.forEach(b => b.classList.toggle('active', b.dataset.groupby === ddState.groupBy));
+
+        // Multi-select visibility (the one matching groupBy is shown)
+        const catWrap = document.querySelector('.multi-select.dd-groupby-cat');
+        const supWrap = document.querySelector('.multi-select.dd-groupby-sup');
+        if (catWrap) catWrap.classList.toggle('hidden', ddState.groupBy !== 'cat');
+        if (supWrap) supWrap.classList.toggle('hidden', ddState.groupBy !== 'sup');
+
+        // Swap button visual state
+        const swapBtn = document.getElementById('dd-axis-swap');
+        if (swapBtn) swapBtn.classList.toggle('active', ddState.axisMode === 'group-rows');
+    }
+
+    function initDashDetailControls() {
+        const groupbyEl = document.getElementById('dd-groupby');
+        const swapBtn = document.getElementById('dd-axis-swap');
+        if (!groupbyEl || !swapBtn) return;
+
+        groupbyEl.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.segmented-btn');
+            if (!btn) return;
+            const val = btn.dataset.groupby;
+            if (val !== 'cat' && val !== 'sup') return;
+            if (ddState.groupBy === val) return;
+            ddState.groupBy = val;
+            // Changing granularity invalidates the auto-top-5 recompute key
+            ddState.lastAutoMetric = null;
+            await Database.setSetting('ddGroupBy', val);
+            updateDashDetailControlsUI();
+            refreshDashDetail();
+        });
+
+        swapBtn.addEventListener('click', async () => {
+            ddState.axisMode = ddState.axisMode === 'store-rows' ? 'group-rows' : 'store-rows';
+            // Sorting was column-based in the old orientation; reset so the
+            // new layout starts clean instead of pointing at a stale column.
+            ddState.sortCol = null;
+            ddState.sortDir = 'desc';
+            // Swapping the axis means the row axis changes too, so the
+            // default top-5-by-metric rows need to be recomputed.
+            ddState.lastAutoMetric = null;
+            await Database.setSetting('ddAxisMode', ddState.axisMode);
+            updateDashDetailControlsUI();
+            refreshDashDetail();
+        });
+    }
+
+    function initCategoryInfoPopover() {
+        const btn = document.getElementById('dd-cat-info-btn');
+        const panel = document.getElementById('dd-cat-info-panel');
+        const search = document.getElementById('dd-cat-info-search');
+        if (!btn || !panel || !search) return;
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const wasOpen = panel.classList.contains('open');
+            if (!wasOpen) renderCategoryInfoPopover();
+            panel.classList.toggle('open');
+        });
+        document.addEventListener('click', (e) => {
+            if (!panel.contains(e.target) && !btn.contains(e.target)) {
+                panel.classList.remove('open');
+            }
+        });
+        search.addEventListener('input', renderCategoryInfoPopover);
+    }
+
+    function initDashGeneralKpiPicker() {
+        const trigger = document.getElementById('dg-kpi-trigger');
+        const panel = document.getElementById('dg-kpi-panel');
+        const list = document.getElementById('dg-kpi-list');
+        const resetBtn = document.getElementById('dg-kpi-reset');
+        if (!trigger || !panel || !list || !resetBtn) return;
+
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            panel.classList.toggle('open');
+        });
+        document.addEventListener('click', (e) => {
+            if (!panel.contains(e.target) && !trigger.contains(e.target)) {
+                panel.classList.remove('open');
+            }
+        });
+
+        // Work on the full picker order so up/down on inactive entries also
+        // moves them relative to actives. This lets the user promote a hidden
+        // KPI into a desired slot and then toggle it on.
+        list.addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-role]');
+            if (!btn) return;
+            const row = btn.closest('.dg-kpi-row');
+            if (!row) return;
+            const key = row.dataset.key;
+            const role = btn.dataset.role;
+            const order = dgPickerEntries().map(x => x.key);
+            const idx = order.indexOf(key);
+            if (idx < 0) return;
+
+            if (role === 'toggle') {
+                // Checkbox change is handled in the change listener below; the
+                // click bubbled from the label wrapper, so let the change run.
+                return;
+            }
+            if (role === 'up' && idx > 0) {
+                [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
+            } else if (role === 'down' && idx < order.length - 1) {
+                [order[idx + 1], order[idx]] = [order[idx], order[idx + 1]];
+            } else {
+                return;
+            }
+            // Rebuild dgState.columns keeping only the active ones, in new order
+            const activeSet = new Set(dgState.columns || []);
+            dgState.columns = order.filter(k => activeSet.has(k));
+            await saveDashGeneralColumns();
+            renderDashGeneralKpiPanel();
+            refreshDashGeneral();
+        });
+
+        list.addEventListener('change', async (e) => {
+            if (!e.target.matches('input[type="checkbox"][data-role="toggle"]')) return;
+            const row = e.target.closest('.dg-kpi-row');
+            if (!row) return;
+            const key = row.dataset.key;
+            const order = dgPickerEntries().map(x => x.key);
+            const activeSet = new Set(dgState.columns || []);
+            if (e.target.checked) activeSet.add(key);
+            else activeSet.delete(key);
+            dgState.columns = order.filter(k => activeSet.has(k));
+            await saveDashGeneralColumns();
+            renderDashGeneralKpiPanel();
+            refreshDashGeneral();
+        });
+
+        resetBtn.addEventListener('click', async () => {
+            dgState.columns = [...DG_DEFAULT_COLUMNS];
+            await saveDashGeneralColumns();
+            renderDashGeneralKpiPanel();
+            refreshDashGeneral();
+        });
+    }
+
     async function refreshDashGeneral() {
+        await loadStoreGroups();
+        await loadDashGeneralColumns();
+        renderDashGeneralKpiPanel();
+
         const available = await updateAvailableWeeksLabel('dg-available');
         const fromEl = document.getElementById('dg-week-from');
         const toEl = document.getElementById('dg-week-to');
@@ -1863,55 +2777,70 @@ const App = (() => {
         }
         const weekFrom = parseInt(fromEl.value) || 1;
         const weekTo = parseInt(toEl.value) || weekFrom;
-        const excludeEcom = document.getElementById('dg-exclude-ecom').checked;
 
         updateWeekRangeLabel('dg-week-range', weekFrom, weekTo);
 
+        const activeCols = dgState.columns || DG_DEFAULT_COLUMNS;
+        const totalCols = activeCols.length + 1 + 2; // name + metrics + 2 placeholders
+
         if (weekTo < weekFrom || weekTo - weekFrom > 52) {
             document.getElementById('dg-tbody').innerHTML =
-                '<tr><td colspan="11" class="empty-msg">Rango de semanas no valido.</td></tr>';
+                `<tr><td colspan="${totalCols}" class="empty-msg">Rango de semanas no valido.</td></tr>`;
             return;
         }
 
         const allData = await Database.getAllOperations();
         const rangeRecords = allData.filter(r => r.week >= weekFrom && r.week <= weekTo);
-        const agg = aggregateByStore(rangeRecords, excludeEcom);
+        const buckets = aggregateByStore(rangeRecords);
+
+        // Populate store multi-select state
+        const allStoresArr = Object.keys(buckets).sort((a, b) => a.localeCompare(b));
+        dgState.allStores = allStoresArr;
+        if (!dgState.storesTouched || !dgState.visibleStores) {
+            dgState.visibleStores = new Set(allStoresArr);
+        } else {
+            // Drop stale store entries
+            dgState.visibleStores = new Set([...dgState.visibleStores].filter(s => buckets[s]));
+        }
+        updateMultiSelectUI('dg-store');
+        const dgGroupsInst = storeGroupsInstances.find(i => i.prefix === 'dg');
+        if (dgGroupsInst) renderStoreGroupsUIFor(dgGroupsInst);
 
         // Sort stores by the selected column (desc/asc) or alphabetically if none
         const sortCol = dgState.sortCol;
         const sortDir = dgState.sortDir;
         const dgSortValue = (storeName, col) => {
-            const a = agg[storeName];
+            const b = buckets[storeName];
             if (col === 'name') return storeName.toLowerCase();
-            if (col === 'netSales') return a.netSales;
-            if (col === 'buys') return a.buys;
-            if (col === 'pctVale') return a.buys > 0 ? a.pctVale : -1;
-            return 0;
+            const def = METRICS[col];
+            if (!def) return 0;
+            // For pct metrics without denominator, sort to bottom
+            if (def.isPct && def.minOpsOf && def.minOpsOf(b) === 0) return -1;
+            return def.value(b);
         };
-        const stores = Object.keys(agg).sort((a, b) => {
-            if (!sortCol) return a.localeCompare(b);
-            const va = dgSortValue(a, sortCol);
-            const vb = dgSortValue(b, sortCol);
-            if (typeof va === 'string') {
-                return sortDir === 'desc' ? vb.localeCompare(va) : va.localeCompare(vb);
-            }
-            return sortDir === 'desc' ? (vb - va) : (va - vb);
-        });
+        const stores = allStoresArr
+            .filter(s => dgState.visibleStores.has(s))
+            .sort((a, b) => {
+                if (!sortCol) return a.localeCompare(b);
+                const va = dgSortValue(a, sortCol);
+                const vb = dgSortValue(b, sortCol);
+                if (typeof va === 'string') {
+                    return sortDir === 'desc' ? vb.localeCompare(va) : va.localeCompare(vb);
+                }
+                return sortDir === 'desc' ? (vb - va) : (va - vb);
+            });
 
         const sortCls = (col) => sortCol === col ? (sortDir === 'desc' ? ' sort-desc' : ' sort-asc') : '';
         const thead = document.getElementById('dg-thead');
+        const metricThs = activeCols.map(key => {
+            const lbl = DG_COLUMN_LABELS[key] || { label: METRICS[key]?.label || key, title: METRICS[key]?.label || key };
+            return `<th class="sortable${sortCls(key)}" data-dg-sort="${key}" title="${escapeHtml(lbl.title)}">${escapeHtml(lbl.label)}</th>`;
+        }).join('');
         thead.innerHTML = `<tr>
             <th class="col-name sortable${sortCls('name')}" data-dg-sort="name">Tienda</th>
-            <th class="sortable${sortCls('netSales')}" data-dg-sort="netSales">Ventas</th>
-            <th class="sortable${sortCls('buys')}" data-dg-sort="buys">Compras</th>
-            <th class="sortable${sortCls('pctVale')}" data-dg-sort="pctVale" title="% de compras hechas con vale de tienda (exchange)">% Vale</th>
+            ${metricThs}
             <th>Socios</th>
             <th>Stock</th>
-            <th>KPI 1</th>
-            <th>KPI 2</th>
-            <th>KPI 3</th>
-            <th>KPI 4</th>
-            <th>KPI 5</th>
         </tr>`;
         thead.querySelectorAll('th.sortable').forEach(th => {
             th.addEventListener('click', () => sortDashGeneral(th.dataset.dgSort));
@@ -1919,46 +2848,44 @@ const App = (() => {
 
         const tbody = document.getElementById('dg-tbody');
         if (!stores.length) {
-            tbody.innerHTML = '<tr><td colspan="11" class="empty-msg">Sin datos para esta semana.</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="${totalCols}" class="empty-msg">Sin datos para esta semana.</td></tr>`;
             document.getElementById('dg-tfoot').innerHTML = '';
             return;
         }
 
-        let totNet = 0, totBuys = 0, totCashBuys = 0, totExch = 0;
+        if (!activeCols.length) {
+            tbody.innerHTML = `<tr><td colspan="${totalCols}" class="empty-msg">Ningun KPI seleccionado. Abre el filtro KPIs para elegir columnas.</td></tr>`;
+            document.getElementById('dg-tfoot').innerHTML = '';
+            return;
+        }
+
+        // Render rows
         let html = '';
         for (const store of stores) {
-            const a = agg[store];
-            totNet += a.netSales;
-            totBuys += a.buys;
-            totCashBuys += a.cashBuys;
-            totExch += a.exchanges;
+            const b = buckets[store];
+            const metricCells = activeCols.map(key => {
+                const def = METRICS[key];
+                return `<td>${def.format(def.value(b), b)}</td>`;
+            }).join('');
             html += `<tr>
                 <td class="col-name">${escapeHtml(store)}</td>
-                <td>${formatCurrency(a.netSales)}</td>
-                <td>${formatCurrency(a.buys)}</td>
-                <td>${a.buys > 0 ? Math.round(a.pctVale) + '%' : '--'}</td>
-                <td class="cell-empty">--</td>
-                <td class="cell-empty">--</td>
-                <td class="cell-empty">--</td>
-                <td class="cell-empty">--</td>
-                <td class="cell-empty">--</td>
+                ${metricCells}
                 <td class="cell-empty">--</td>
                 <td class="cell-empty">--</td>
             </tr>`;
         }
         tbody.innerHTML = html;
 
-        const totPct = totBuys > 0 ? Math.round((totExch / totBuys) * 100) : 0;
+        // TOTAL row: merge only the visible stores' buckets
+        const totalBucket = emptyBucket();
+        for (const s of stores) mergeBuckets(totalBucket, buckets[s]);
+        const totalCells = activeCols.map(key => {
+            const def = METRICS[key];
+            return `<td><strong>${def.format(def.value(totalBucket), totalBucket)}</strong></td>`;
+        }).join('');
         document.getElementById('dg-tfoot').innerHTML = `<tr class="row-total">
             <td class="col-name"><strong>TOTAL</strong></td>
-            <td><strong>${formatCurrency(totNet)}</strong></td>
-            <td><strong>${formatCurrency(totBuys)}</strong></td>
-            <td><strong>${totBuys > 0 ? totPct + '%' : '--'}</strong></td>
-            <td class="cell-empty">--</td>
-            <td class="cell-empty">--</td>
-            <td class="cell-empty">--</td>
-            <td class="cell-empty">--</td>
-            <td class="cell-empty">--</td>
+            ${totalCells}
             <td class="cell-empty">--</td>
             <td class="cell-empty">--</td>
         </tr>`;
@@ -1978,6 +2905,12 @@ const App = (() => {
     }
 
     async function refreshDashDetail() {
+        // Ensure supercat mapping + persisted prefs + shared store groups are loaded before render.
+        try { await loadSupercategoryMapping(); } catch (e) { /* no-op */ }
+        await loadDashDetailConfig();
+        await loadStoreGroups();
+        updateDashDetailControlsUI();
+
         const available = await updateAvailableWeeksLabel('dd-available');
         const fromEl = document.getElementById('dd-week-from');
         const toEl = document.getElementById('dd-week-to');
@@ -1995,44 +2928,60 @@ const App = (() => {
         const weekFrom = parseInt(fromEl.value) || 1;
         const weekTo = parseInt(toEl.value) || weekFrom;
         const metric = document.getElementById('dd-metric').value;
-        const excludeEcom = document.getElementById('dd-exclude-ecom').checked;
+        const metricToKpiKey = { netSales: 'netSales', units: 'totalItems', tickets: 'tickets', buys: 'buys' };
+        const excludeEcom = metricFiltersEcom(metricToKpiKey[metric] || metric);
 
         updateWeekRangeLabel('dd-week-range', weekFrom, weekTo);
 
+        const thead = document.getElementById('dd-thead');
+        const tbody = document.getElementById('dd-tbody');
+        const tfoot = document.getElementById('dd-tfoot');
+        const titleEl = document.getElementById('dd-panel-title');
+
+        // Dynamic panel title
+        const groupLabel = ddState.groupBy === 'sup' ? 'Supercategoría' : 'Categoría';
+        if (titleEl) {
+            titleEl.textContent = ddState.axisMode === 'store-rows'
+                ? `Tiendas × ${groupLabel}`
+                : `${groupLabel} × Tiendas`;
+        }
+
         if (weekTo < weekFrom || weekTo - weekFrom > 52) {
-            document.getElementById('dd-tbody').innerHTML =
-                '<tr><td class="empty-msg">Rango de semanas no valido.</td></tr>';
-            document.getElementById('dd-thead').innerHTML = '<tr><th>Tienda</th></tr>';
-            document.getElementById('dd-tfoot').innerHTML = '';
+            tbody.innerHTML = '<tr><td class="empty-msg">Rango de semanas no valido.</td></tr>';
+            thead.innerHTML = '<tr><th>Tienda</th></tr>';
+            tfoot.innerHTML = '';
             return;
         }
 
         const allData = await Database.getAllOperations();
         const weekRecords = allData.filter(r => r.week >= weekFrom && r.week <= weekTo);
 
-        // Aggregate by store x category.
-        // For 'tickets' we also keep per-store, per-category and global Sets to
-        // avoid inflating totals (the same reference may span multiple categories
-        // of the same store; summing per-cell .size would count it twice).
-        const byStoreCat = {};
+        // Group key = category or supercategory depending on ddState.groupBy.
+        // Aggregate by (store, groupKey). Keep per-store and per-group ticket
+        // Sets for cross-dedup when rendering the Tickets metric.
+        const groupOf = (cat) => ddState.groupBy === 'sup' ? getSupercategory(cat) : cat;
+        const byStoreGroup = {};
         const storeTickets = {};
-        const catTickets = {};
-        const allTickets = new Set();
+        const groupTickets = {};
+        const allTicketSet = new Set();
         const allCategories = new Set();
-        const allStores = new Set();
+        const allGroupSet = new Set();
+        const allStoresSet = new Set();
 
         for (const r of weekRecords) {
             if (excludeEcom && r.channel === 'ecom') continue;
             const store = r.store || '?';
             const cat = r.category || 'Sin categoria';
-            allStores.add(store);
+            const groupKey = groupOf(cat);
+            allStoresSet.add(store);
             allCategories.add(cat);
+            allGroupSet.add(groupKey);
 
-            if (!byStoreCat[store]) byStoreCat[store] = {};
-            if (!byStoreCat[store][cat]) {
-                byStoreCat[store][cat] = { netSales: 0, units: 0, tickets: new Set(), buys: 0 };
+            if (!byStoreGroup[store]) byStoreGroup[store] = {};
+            if (!byStoreGroup[store][groupKey]) {
+                byStoreGroup[store][groupKey] = { netSales: 0, units: 0, tickets: new Set(), buys: 0 };
             }
-            const bucket = byStoreCat[store][cat];
+            const bucket = byStoreGroup[store][groupKey];
             const total = r.total || 0;
             if (r.type === 'sale') {
                 bucket.netSales += total;
@@ -2041,9 +2990,9 @@ const App = (() => {
                     bucket.tickets.add(r.reference);
                     if (!storeTickets[store]) storeTickets[store] = new Set();
                     storeTickets[store].add(r.reference);
-                    if (!catTickets[cat]) catTickets[cat] = new Set();
-                    catTickets[cat].add(r.reference);
-                    allTickets.add(r.reference);
+                    if (!groupTickets[groupKey]) groupTickets[groupKey] = new Set();
+                    groupTickets[groupKey].add(r.reference);
+                    allTicketSet.add(r.reference);
                 }
             } else if (r.type === 'refund') {
                 bucket.netSales -= Math.abs(total);
@@ -2052,24 +3001,37 @@ const App = (() => {
             }
         }
 
-        const allCatsArr = [...allCategories].sort((a, b) => a.localeCompare(b));
-        const allStoresArr = [...allStores].sort((a, b) => a.localeCompare(b));
-        ddState.allCats = allCatsArr;
+        const allStoresArr = [...allStoresSet].sort((a, b) => a.localeCompare(b));
+
+        // Supercategories present in the data (for the sup multi-select UI)
+        const supersInData = new Set();
+        for (const c of allCategories) supersInData.add(getSupercategory(c));
+        const allSupersArr = [];
+        for (const s of SUPERCATEGORY_LIST) if (supersInData.has(s)) allSupersArr.push(s);
+        for (const s of supersInData) if (!allSupersArr.includes(s)) allSupersArr.push(s);
+
+        // Groups array for the active groupBy (used as columns or rows)
+        let allGroupsArr;
+        if (ddState.groupBy === 'sup') {
+            allGroupsArr = allSupersArr.slice();
+        } else {
+            allGroupsArr = [...allGroupSet].sort((a, b) => a.localeCompare(b));
+        }
+
+        ddState.allCats = [...allCategories].sort((a, b) => a.localeCompare(b));
+        ddState.allSupers = allSupersArr;
         ddState.allStores = allStoresArr;
 
-        const thead = document.getElementById('dd-thead');
-        const tbody = document.getElementById('dd-tbody');
-        const tfoot = document.getElementById('dd-tfoot');
-
-        if (!allStoresArr.length || !allCatsArr.length) {
+        if (!allStoresArr.length || !allGroupsArr.length) {
             thead.innerHTML = '<tr><th>Tienda</th></tr>';
-            const msg = weekFrom === weekTo
-                ? 'Sin datos para esta semana.'
-                : 'Sin datos para este rango de semanas.';
+            const msg = weekFrom === weekTo ? 'Sin datos para esta semana.' : 'Sin datos para este rango de semanas.';
             tbody.innerHTML = `<tr><td class="empty-msg">${msg}</td></tr>`;
             tfoot.innerHTML = '';
+            updateMultiSelectUI('sup');
             updateMultiSelectUI('cat');
             updateMultiSelectUI('store');
+            const ddGroupsEmptyInst = storeGroupsInstances.find(i => i.prefix === 'dd');
+            if (ddGroupsEmptyInst) renderStoreGroupsUIFor(ddGroupsEmptyInst);
             return;
         }
 
@@ -2082,88 +3044,110 @@ const App = (() => {
         };
         const fmt = (v) => isCurrency ? formatCurrency(v) : (v || 0).toLocaleString('es-ES');
 
-        // --- Multi-select defaults / reconciliation ---
-        // Category total across all stores, for the active metric (used for top 5 ranking)
-        const catTotalForMetric = (cat) => {
-            if (isTickets) return catTickets[cat] ? catTickets[cat].size : 0;
+        // Per-group total for the active metric (used for top-N defaults on the cat side)
+        const groupTotalForMetric = (g) => {
+            if (isTickets) return groupTickets[g] ? groupTickets[g].size : 0;
             let t = 0;
             for (const store of allStoresArr) {
-                const b = byStoreCat[store]?.[cat];
+                const b = byStoreGroup[store]?.[g];
                 if (b) t += b[metric] || 0;
             }
             return t;
         };
 
-        const rangeKey = `${weekFrom}-${weekTo}-${excludeEcom ? 'e' : 'f'}`;
-        const needTop5 = !ddState.catsTouched && (
-            !ddState.visibleCats ||
+        // Defaults / reconciliation for the group multi-select (matches groupBy)
+        const groupStateKey = ddState.groupBy === 'sup' ? 'visibleSupers' : 'visibleCats';
+        const groupTouchedKey = ddState.groupBy === 'sup' ? 'supersTouched' : 'catsTouched';
+        const rangeKey = `${weekFrom}-${weekTo}-${excludeEcom ? 'e' : 'f'}-${ddState.groupBy}-${ddState.axisMode}`;
+        const needAutoTop = !ddState[groupTouchedKey] && (
+            !ddState[groupStateKey] ||
             ddState.lastAutoMetric !== metric ||
             ddState.lastAutoRange !== rangeKey
         );
-        if (needTop5) {
-            const top5 = [...allCatsArr]
-                .sort((a, b) => catTotalForMetric(b) - catTotalForMetric(a))
-                .slice(0, 5);
-            ddState.visibleCats = new Set(top5);
+        if (needAutoTop) {
+            if (ddState.groupBy === 'sup') {
+                // Few supers: default = all marked
+                ddState[groupStateKey] = new Set(allGroupsArr);
+            } else {
+                // Many cats: default = top 5 by metric
+                const top5 = [...allGroupsArr]
+                    .sort((a, b) => groupTotalForMetric(b) - groupTotalForMetric(a))
+                    .slice(0, 5);
+                ddState[groupStateKey] = new Set(top5);
+            }
             ddState.lastAutoMetric = metric;
             ddState.lastAutoRange = rangeKey;
-        } else if (ddState.visibleCats) {
-            // Drop stale categories that no longer exist in the data
-            ddState.visibleCats = new Set([...ddState.visibleCats].filter(c => allCategories.has(c)));
+        } else if (ddState[groupStateKey]) {
+            const groupSet = new Set(allGroupsArr);
+            ddState[groupStateKey] = new Set([...ddState[groupStateKey]].filter(g => groupSet.has(g)));
         }
 
+        // Stores multi-select
         if (!ddState.storesTouched || !ddState.visibleStores) {
             ddState.visibleStores = new Set(allStoresArr);
         } else {
-            ddState.visibleStores = new Set([...ddState.visibleStores].filter(s => allStores.has(s)));
+            ddState.visibleStores = new Set([...ddState.visibleStores].filter(s => allStoresSet.has(s)));
         }
 
+        updateMultiSelectUI('sup');
         updateMultiSelectUI('cat');
         updateMultiSelectUI('store');
+        const ddGroupsInst = storeGroupsInstances.find(i => i.prefix === 'dd');
+        if (ddGroupsInst) renderStoreGroupsUIFor(ddGroupsInst);
 
-        const visibleCats = allCatsArr.filter(c => ddState.visibleCats.has(c));
-        let visibleStores = allStoresArr.filter(s => ddState.visibleStores.has(s));
+        const visibleGroups = allGroupsArr.filter(g => ddState[groupStateKey].has(g));
+        const visibleStores = allStoresArr.filter(s => ddState.visibleStores.has(s));
 
-        if (!visibleStores.length || !visibleCats.length) {
+        if (!visibleStores.length || !visibleGroups.length) {
             thead.innerHTML = '<tr><th>Tienda</th></tr>';
-            tbody.innerHTML = '<tr><td class="empty-msg">No hay categorias/tiendas seleccionadas. Despliega los filtros.</td></tr>';
+            tbody.innerHTML = '<tr><td class="empty-msg">No hay items seleccionados. Despliega los filtros.</td></tr>';
             tfoot.innerHTML = '';
             return;
         }
 
-        // --- Row values and row totals (computed up front so we can sort) ---
-        const rowValues = {};  // store -> { cat -> v }
+        // Orientation: who goes on the row axis
+        const storeRows = ddState.axisMode === 'store-rows';
+        const rowsArr = storeRows ? visibleStores.slice() : visibleGroups.slice();
+        const colsArr = storeRows ? visibleGroups.slice() : visibleStores.slice();
+
+        // Cell lookup abstracts over orientation: row × col → bucket
+        const bucketFor = (row, col) => {
+            const store = storeRows ? row : col;
+            const group = storeRows ? col : row;
+            return byStoreGroup[store]?.[group];
+        };
+
+        // Row values + row totals (up-front so we can sort)
+        const rowValues = {};
         const rowTotals = {};
-        for (const store of visibleStores) {
-            rowValues[store] = {};
-            for (const cat of visibleCats) {
-                rowValues[store][cat] = extract(byStoreCat[store]?.[cat]);
+        for (const row of rowsArr) {
+            rowValues[row] = {};
+            for (const col of colsArr) {
+                rowValues[row][col] = extract(bucketFor(row, col));
             }
             if (isTickets) {
                 const refs = new Set();
-                for (const cat of visibleCats) {
-                    const bucket = byStoreCat[store]?.[cat];
-                    if (bucket && bucket.tickets) {
-                        for (const ref of bucket.tickets) refs.add(ref);
-                    }
+                for (const col of colsArr) {
+                    const b = bucketFor(row, col);
+                    if (b && b.tickets) for (const ref of b.tickets) refs.add(ref);
                 }
-                rowTotals[store] = refs.size;
+                rowTotals[row] = refs.size;
             } else {
-                rowTotals[store] = visibleCats.reduce((sum, cat) => sum + rowValues[store][cat], 0);
+                rowTotals[row] = colsArr.reduce((sum, col) => sum + rowValues[row][col], 0);
             }
         }
 
-        // --- Sort ---
+        // Sort
         const sortCol = ddState.sortCol;
         const sortDir = ddState.sortDir;
         if (sortCol) {
-            const getVal = (store) => {
-                if (sortCol === 'name') return store.toLowerCase();
-                if (sortCol === '__total__') return rowTotals[store] || 0;
-                if (sortCol.startsWith('cat:')) return rowValues[store][sortCol.slice(4)] || 0;
+            const getVal = (row) => {
+                if (sortCol === 'name') return row.toLowerCase();
+                if (sortCol === '__total__') return rowTotals[row] || 0;
+                if (sortCol.startsWith('col:')) return rowValues[row][sortCol.slice(4)] || 0;
                 return 0;
             };
-            visibleStores.sort((a, b) => {
+            rowsArr.sort((a, b) => {
                 const va = getVal(a);
                 const vb = getVal(b);
                 if (typeof va === 'string') {
@@ -2174,12 +3158,13 @@ const App = (() => {
         }
 
         const sortCls = (col) => sortCol === col ? (sortDir === 'desc' ? ' sort-desc' : ' sort-asc') : '';
+        const rowHeaderLabel = storeRows ? 'Tienda' : groupLabel;
 
         // Header
-        let head = `<tr><th class="col-name sortable${sortCls('name')}" data-dd-sort="name">Tienda</th>`;
-        for (const cat of visibleCats) {
-            const key = `cat:${cat}`;
-            head += `<th class="sortable${sortCls(key)}" data-dd-sort="${escapeHtml(key)}">${escapeHtml(cat)}</th>`;
+        let head = `<tr><th class="col-name sortable${sortCls('name')}" data-dd-sort="name">${escapeHtml(rowHeaderLabel)}</th>`;
+        for (const col of colsArr) {
+            const key = `col:${col}`;
+            head += `<th class="sortable${sortCls(key)}" data-dd-sort="${escapeHtml(key)}">${escapeHtml(col)}</th>`;
         }
         head += `<th class="col-shaded sortable${sortCls('__total__')}" data-dd-sort="__total__">Total</th></tr>`;
         thead.innerHTML = head;
@@ -2189,36 +3174,32 @@ const App = (() => {
 
         // Body
         let html = '';
-        const colTotals = new Array(visibleCats.length).fill(0);
+        const colTotals = new Array(colsArr.length).fill(0);
         let grandTotal = 0;
 
-        for (const store of visibleStores) {
-            let row = `<tr><td class="col-name">${escapeHtml(store)}</td>`;
-            visibleCats.forEach((cat, i) => {
-                const v = rowValues[store][cat];
+        for (const row of rowsArr) {
+            let tr = `<tr><td class="col-name">${escapeHtml(row)}</td>`;
+            colsArr.forEach((col, i) => {
+                const v = rowValues[row][col];
                 if (!isTickets) colTotals[i] += v;
-                row += `<td>${v ? fmt(v) : '<span class="cell-zero">--</span>'}</td>`;
+                tr += `<td>${v ? fmt(v) : '<span class="cell-zero">--</span>'}</td>`;
             });
-            if (!isTickets) grandTotal += rowTotals[store];
-            row += `<td class="col-shaded"><strong>${rowTotals[store] ? fmt(rowTotals[store]) : '--'}</strong></td></tr>`;
-            html += row;
+            if (!isTickets) grandTotal += rowTotals[row];
+            tr += `<td class="col-shaded"><strong>${rowTotals[row] ? fmt(rowTotals[row]) : '--'}</strong></td></tr>`;
+            html += tr;
         }
         tbody.innerHTML = html;
 
-        // Footer totals
-        // For tickets: column total = unique refs in that category across visible stores.
-        // Grand total = unique refs across visible cats & visible stores.
+        // Footer: column totals + grand total
         let visibleRefs = null;
         let foot = '<tr class="row-total"><td class="col-name"><strong>TOTAL</strong></td>';
-        visibleCats.forEach((cat, i) => {
+        colsArr.forEach((col, i) => {
             let v;
             if (isTickets) {
                 const refs = new Set();
-                for (const store of visibleStores) {
-                    const bucket = byStoreCat[store]?.[cat];
-                    if (bucket && bucket.tickets) {
-                        for (const ref of bucket.tickets) refs.add(ref);
-                    }
+                for (const row of rowsArr) {
+                    const b = bucketFor(row, col);
+                    if (b && b.tickets) for (const ref of b.tickets) refs.add(ref);
                 }
                 v = refs.size;
                 if (!visibleRefs) visibleRefs = new Set();

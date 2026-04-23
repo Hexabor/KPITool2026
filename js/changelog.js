@@ -4,6 +4,30 @@
  */
 const Changelog = [
     {
+        date: '23/04/2026 (sesion 7)',
+        items: [
+            { type: 'new', text: 'Vista tienda/empleado: modo comparar KPIs. Al fijar una sola tienda o empleado, la tabla cambia a filas=KPIs, columnas=semanas, con sparkline por fila. Multi-select de KPIs para elegir cuales comparar (6 por defecto)' },
+            { type: 'new', text: 'Vista tienda/empleado: selector de empleado buscable (cuando scope=empleado) para entrar en modo comparar' },
+            { type: 'fix', text: 'Vista tienda/empleado: el grafico de evolucion ya se muestra correctamente. Error silencioso (Y_AXIS_WIDTH indefinido) rompia el render de Chart.js y lo dejaba vacio' },
+            { type: 'new', text: 'Vista tienda/empleado: cuando hay varios empleados/tiendas en el grafico, se muestra siempre una linea dasheada gris con el total agregado para dar contexto' },
+            { type: 'fix', text: 'Vista tienda/empleado: tooltip del icono de info del grafico ya no se duplica (title nativo + custom al mismo tiempo) ni se corta con el borde del panel' },
+            { type: 'new', text: 'Configuracion: filtro ecom por KPI. Cada KPI decide si incluye o excluye las ordenes de e-commerce. Se retira el switch "Filtrar ecom" de las 3 vistas. Por defecto: KPIs de volumen (Ventas, Refunds, Articulos) incluyen ecom; los de comportamiento presencial (Tickets, % Venta compl., % Gel/Mvl, etc.) lo excluyen' },
+            { type: 'new', text: 'Vista general: filtro multi-select de tiendas (antes no tenia filtro propio de tiendas)' },
+            { type: 'new', text: 'Vista general: grupos de tiendas guardables. Crea "Zona Norte", "Canarias", etc., aplicalos con un click. Se pueden renombrar, actualizar y eliminar. Compartidos con Vista detalle' },
+            { type: 'new', text: 'Vista general: nuevas columnas % Venta compl., % Gel/Mvl, % Basics/Mvl. Se retiran los placeholders KPI 1-5. Socios y Stock se mantienen como placeholders' },
+            { type: 'new', text: 'Vista general: selector de KPIs configurable. Eliges que columnas ver y en que orden (botones arriba/abajo). "Por defecto" resetea' },
+            { type: 'change', text: 'Vista general: el TOTAL recalcula medias ponderadas correctas sobre el subconjunto visible de tiendas (no una suma ingenua)' },
+            { type: 'new', text: 'Vista detalle: filtro por supercategoria. Mapping de 231 categorias a 7 supers (Juegos, Electronica, Informatica, Moviles, DVD, Accesorios Nuevos, Other), cargado desde data/categories-supercategories.json' },
+            { type: 'new', text: 'Vista detalle: segmented control para elegir granularidad (Categoria o Supercategoria) - unicamente uno de los dos filtros esta activo a la vez' },
+            { type: 'new', text: 'Vista detalle: boton swap para intercambiar ejes. Por defecto tiendas en filas y grupos en columnas; al pulsar, grupos en filas y tiendas en columnas. Util para comparar dos tiendas concretas' },
+            { type: 'new', text: 'Vista detalle: boton de info (i) junto al filtro de categorias. Abre un popover con el mapa completo supercategoria -> categorias, con buscador. Solo lectura' },
+            { type: 'new', text: 'Vista detalle: grupos de tiendas compartidos con Vista general. Los grupos que guardes en cualquiera de las dos vistas aparecen en ambas' },
+            { type: 'change', text: 'Cabeceras de paneles: titulo + filtros ya no se estiran a los extremos. Ambos se agrupan centrados, alineados con la tabla centrada del body' },
+            { type: 'change', text: 'Linea "Datos disponibles..." reubicada junto al titulo del modulo (section-header), fuera del area de trabajo. Quita ruido visual' },
+            { type: 'new', text: 'Favicon (assets/favicon.png)' },
+        ]
+    },
+    {
         date: '23/04/2026 (sesion 6)',
         items: [
             { type: 'new', text: 'Activado importador Baby Banking IC (Islas Canarias): parser reconoce headers IC (branchname, order_date, box_id, box_name, boxcategory)' },

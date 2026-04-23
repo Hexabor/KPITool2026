@@ -759,8 +759,10 @@ body {
 
 .kpi-panel-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 1.5rem;
     padding: 1rem 1.25rem;
     border-bottom: 1px solid var(--color-border-light);
 }
@@ -802,20 +804,19 @@ body {
     color: var(--color-primary);
     background: var(--color-primary-light);
     border-bottom: 1px solid var(--color-border-light);
+    text-align: center;
 }
 
 .kpi-panel-week-range:empty {
     display: none;
 }
 
-/* Available data range hint (below week-range label) */
+/* Available data range hint (shown in the section-header row) */
 .available-weeks {
-    padding: 0.3rem 1.25rem;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     color: var(--color-text-light);
-    background: var(--color-bg);
-    border-bottom: 1px solid var(--color-border-light);
     font-style: italic;
+    text-align: center;
 }
 
 .available-weeks:empty {
@@ -873,11 +874,11 @@ body {
 }
 
 .evo-chart-info:hover::after {
-    content: attr(title);
+    content: attr(data-tip);
     position: absolute;
-    right: 0;
-    bottom: 100%;
-    margin-bottom: 0.4rem;
+    left: 0;
+    top: 100%;
+    margin-top: 0.4rem;
     background: var(--color-text);
     color: white;
     padding: 0.5rem 0.75rem;
@@ -885,9 +886,10 @@ body {
     font-size: 0.7rem;
     line-height: 1.4;
     white-space: pre-line;
-    width: 220px;
+    width: 260px;
     z-index: 20;
     pointer-events: none;
+    box-shadow: var(--shadow-md);
 }
 
 .evo-chart-container {
@@ -1142,6 +1144,33 @@ body {
 
 .evo-row-selected td:first-child {
     color: var(--color-primary);
+}
+
+/* ===== EVOLUTION COMPARE MODE (KPIs-as-rows) ===== */
+#evo-table .col-spark {
+    width: 130px;
+    padding: 0.2rem 0.5rem;
+    text-align: center;
+}
+
+#evo-table .evo-kpi-name {
+    font-weight: 600;
+    color: var(--color-text);
+    white-space: nowrap;
+}
+
+.evo-sparkline {
+    display: inline-block;
+    vertical-align: middle;
+    color: var(--color-primary);
+    overflow: visible;
+}
+
+#evo-table .col-subject-hint {
+    font-weight: 400;
+    font-size: 0.7rem;
+    color: var(--color-text-lighter);
+    margin-left: 0.35rem;
 }
 
 #evo-table .col-rank,
@@ -1763,6 +1792,57 @@ tr:hover { background: #f8fafc; }
     font-size: 0.82rem;
 }
 
+/* ===== ECOM config per KPI ===== */
+.kpi-ecom-config {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.ecom-kpi-group {
+    flex: 1 1 240px;
+    min-width: 240px;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    padding: 0.6rem 0.8rem;
+    background: var(--color-bg);
+}
+
+.ecom-kpi-group h4 {
+    margin: 0 0 0.4rem 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.ecom-kpi-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.ecom-kpi-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text);
+    cursor: pointer;
+    padding: 0.15rem 0.1rem;
+    border-radius: 3px;
+}
+
+.ecom-kpi-row:hover {
+    background: var(--color-primary-light);
+}
+
+.ecom-kpi-row input[type="checkbox"] {
+    flex-shrink: 0;
+}
+
 /* ===== LOG ===== */
 .log-container {
     max-width: 1100px;
@@ -1886,6 +1966,243 @@ tr:hover { background: #f8fafc; }
     display: block;
 }
 
+/* Anchor to the right when the trigger is near the right edge of its container,
+   so the panel doesn't overflow and force horizontal scroll. */
+.multi-select[data-key="dg-stores"] .multi-select-panel,
+.multi-select[data-key="dg-kpis"] .multi-select-panel {
+    left: auto;
+    right: 0;
+}
+
+/* ===== Segmented control (Vista detalle groupBy) ===== */
+.segmented {
+    display: inline-flex;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--color-surface);
+}
+
+.segmented-btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.72rem;
+    border: none;
+    background: transparent;
+    color: var(--color-text-light);
+    cursor: pointer;
+    border-right: 1px solid var(--color-border);
+}
+
+.segmented-btn:last-child {
+    border-right: none;
+}
+
+.segmented-btn:hover {
+    color: var(--color-primary);
+}
+
+.segmented-btn.active {
+    background: var(--color-primary);
+    color: #fff;
+}
+
+/* ===== Icon button (Vista detalle axis swap) ===== */
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text-light);
+    cursor: pointer;
+}
+
+.icon-btn:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.icon-btn.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+}
+
+/* ===== Category info popover (Vista detalle) ===== */
+.info-popover-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.info-popover-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 50%;
+    background: var(--color-surface);
+    color: var(--color-text-light);
+    cursor: pointer;
+}
+
+.info-popover-trigger:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.info-popover {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.4rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    width: 420px;
+    max-width: 90vw;
+    max-height: 420px;
+    overflow: hidden;
+    display: none;
+    z-index: 60;
+    padding: 0.6rem;
+}
+
+.info-popover.open {
+    display: flex;
+    flex-direction: column;
+}
+
+.info-popover .multi-select-search {
+    margin-bottom: 0.5rem;
+}
+
+.info-popover-body {
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.info-popover-group {
+    border-bottom: 1px dashed var(--color-border-light);
+    padding-bottom: 0.4rem;
+}
+
+.info-popover-group:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.info-popover-super {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-primary);
+    margin-bottom: 0.3rem;
+}
+
+.info-popover-count {
+    font-weight: 400;
+    color: var(--color-text-lighter);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.info-popover-cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.info-popover-cat {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.45rem;
+    background: var(--color-bg);
+    border-radius: 10px;
+    color: var(--color-text);
+}
+
+.info-popover-empty {
+    font-size: 0.75rem;
+    color: var(--color-text-lighter);
+    text-align: center;
+    padding: 0.8rem;
+}
+
+/* ===== Vista general KPI picker ===== */
+.dg-kpi-list {
+    max-height: 340px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-bottom: 0.4rem;
+}
+
+.dg-kpi-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.72rem;
+    border-radius: 3px;
+    color: var(--color-text-light);
+    background: var(--color-bg);
+}
+
+.dg-kpi-row.active {
+    color: var(--color-text);
+    background: var(--color-surface);
+}
+
+.dg-kpi-row:hover {
+    background: var(--color-primary-light);
+}
+
+.dg-kpi-row input[type="checkbox"] {
+    flex-shrink: 0;
+}
+
+.dg-kpi-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dg-kpi-move {
+    padding: 0 0.35rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.dg-kpi-move:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.dg-kpi-move:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
 .multi-select-search {
     width: 100%;
     padding: 0.3rem 0.5rem;
@@ -1899,6 +2216,118 @@ tr:hover { background: #f8fafc; }
 .multi-select-search:focus {
     border-color: var(--color-primary);
     outline: none;
+}
+
+/* ===== Store groups (inside dg-store panel) ===== */
+.store-groups {
+    border-bottom: 1px solid var(--color-border-light);
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.4rem;
+}
+
+.store-groups-toolbar {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+    margin-bottom: 0.3rem;
+}
+
+.store-groups-select {
+    flex: 1;
+    min-width: 0;
+    padding: 0.25rem 0.4rem;
+    font-size: 0.72rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+.btn.btn-xs {
+    padding: 0.2rem 0.45rem;
+    font-size: 0.7rem;
+    line-height: 1;
+    border-radius: var(--radius-sm);
+}
+
+.store-groups-manage-toggle {
+    width: 100%;
+    text-align: left;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.7rem;
+    color: var(--color-text-light);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.store-groups-manage-toggle:hover {
+    background: var(--color-bg);
+    color: var(--color-primary);
+}
+
+.store-groups-list {
+    margin-top: 0.3rem;
+    padding-top: 0.3rem;
+    border-top: 1px dashed var(--color-border-light);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.store-groups-empty {
+    font-size: 0.7rem;
+    color: var(--color-text-lighter);
+    text-align: center;
+    padding: 0.3rem;
+}
+
+.store-group-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.25rem;
+    font-size: 0.7rem;
+    border-radius: 3px;
+    background: var(--color-bg);
+}
+
+.store-group-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.store-group-count {
+    color: var(--color-text-lighter);
+    font-size: 0.65rem;
+}
+
+.store-group-btn {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.65rem;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.store-group-btn:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.store-group-btn-danger:hover {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
 }
 
 .multi-select-all {

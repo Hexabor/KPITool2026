@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CapiMetrics 2026</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png">
     <link rel="stylesheet" href="css/styles.css">
     <script src="https://unpkg.com/dexie@3.2.6/dist/dexie.min.js"></script>
     <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
@@ -335,6 +336,11 @@
                 <p id="course-start-info" style="margin-top:0.5rem; font-style:italic;"></p>
             </div>
             <div class="settings-group">
+                <h3>Filtro ecom por KPI</h3>
+                <p>Marca los KPIs que deben excluir las &oacute;rdenes e-commerce. Los KPIs de volumen total (ventas, art&iacute;culos) suelen incluir ecom; los de comportamiento presencial (tickets, % venta complementaria, % gel/m&oacute;vil) suelen excluirlo.</p>
+                <div class="kpi-ecom-config" id="kpi-ecom-config"></div>
+            </div>
+            <div class="settings-group">
                 <h3>Base de datos</h3>
                 <p id="settings-db-info">Cargando info...</p>
             </div>
@@ -353,6 +359,7 @@
         <section id="section-dash-store" class="section hidden">
             <div class="section-header">
                 <h2>Vista tienda/empleado</h2>
+                <div class="available-weeks" id="evo-available"></div>
                 <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
             </div>
 
@@ -364,7 +371,7 @@
                         <input type="number" id="evo-week-from" class="week-input" min="1" value="">
                         <label class="filter-label">a W</label>
                         <input type="number" id="evo-week-to" class="week-input" min="1" value="">
-                        <select id="evo-metric">
+                        <select id="evo-metric" class="evo-single-only">
                             <optgroup label="Ventas">
                                 <option value="netSales">Ventas netas (&euro;)</option>
                                 <option value="grossSales">Ventas brutas (&euro;)</option>
@@ -391,12 +398,30 @@
                                 <option value="pctVale">% Vale</option>
                             </optgroup>
                         </select>
-                        <input type="number" id="evo-min-ops" class="min-ops-input" min="1" value="10" placeholder="Min" title="Minimo de operaciones para incluir en ranking porcentual" disabled>
+                        <div class="multi-select evo-compare-only hidden" data-key="evo-kpis">
+                            <button type="button" class="multi-select-trigger" id="evo-kpi-trigger">
+                                <span class="multi-select-label">KPIs</span>
+                                <span class="multi-select-count" id="evo-kpi-count">--</span>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="multi-select-panel" id="evo-kpi-panel">
+                                <input type="text" class="multi-select-search" id="evo-kpi-search" placeholder="Buscar...">
+                                <label class="multi-select-all">
+                                    <input type="checkbox" id="evo-kpi-all">
+                                    <span>Seleccionar todos</span>
+                                </label>
+                                <div class="multi-select-list" id="evo-kpi-list"></div>
+                                <div class="multi-select-footer">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="evo-kpi-reset">Por defecto</button>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="number" id="evo-min-ops" class="min-ops-input evo-single-only" min="1" value="10" placeholder="Min" title="Minimo de operaciones para incluir en ranking porcentual" disabled>
                         <select id="evo-scope">
                             <option value="staff">Por empleado</option>
                             <option value="store">Por tienda</option>
                         </select>
-                        <select id="evo-top-n">
+                        <select id="evo-top-n" class="evo-single-only">
                             <option value="all" selected>Todos</option>
                             <option value="3">Top 3</option>
                             <option value="5">Top 5</option>
@@ -407,11 +432,10 @@
                             <input type="text" class="search-select-input" id="kpi-panel-store" placeholder="Todas las tiendas" value="">
                             <div class="search-select-dropdown" id="kpi-panel-store-list"></div>
                         </div>
-                        <label class="toggle-switch" title="Excluir ordenes e-commerce">
-                            <input type="checkbox" id="evo-exclude-ecom" checked>
-                            <span class="toggle-slider"></span>
-                            <span class="toggle-label">Filtrar ecom</span>
-                        </label>
+                        <div class="search-select evo-staff-only hidden" id="kpi-panel-staff-wrap">
+                            <input type="text" class="search-select-input" id="kpi-panel-staff" placeholder="Todos los empleados" value="">
+                            <div class="search-select-dropdown" id="kpi-panel-staff-list"></div>
+                        </div>
                         <label class="toggle-switch" title="Unificar empleados que aparecen en varias tiendas">
                             <input type="checkbox" id="evo-merge-stores">
                             <span class="toggle-slider"></span>
@@ -420,7 +444,6 @@
                     </div>
                 </div>
                 <div class="kpi-panel-week-range" id="kpi-panel-week-range"></div>
-                <div class="available-weeks" id="evo-available"></div>
 
                 <!-- Table -->
                 <div class="kpi-panel-body">
@@ -441,7 +464,7 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                         Grafico
                     </button>
-                    <span class="evo-chart-info" id="evo-chart-info" title="">
+                    <span class="evo-chart-info" id="evo-chart-info" data-tip="">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                     </span>
                 </div>
@@ -457,6 +480,7 @@
         <section id="section-dash-general" class="section hidden">
             <div class="section-header">
                 <h2>Vista general</h2>
+                <div class="available-weeks" id="dg-available"></div>
                 <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
             </div>
             <div class="kpi-panel">
@@ -467,15 +491,47 @@
                         <input type="number" id="dg-week-from" class="week-input" min="1" value="">
                         <label class="filter-label">a W</label>
                         <input type="number" id="dg-week-to" class="week-input" min="1" value="">
-                        <label class="toggle-switch" title="Excluir ordenes e-commerce">
-                            <input type="checkbox" id="dg-exclude-ecom">
-                            <span class="toggle-slider"></span>
-                            <span class="toggle-label">Filtrar ecom</span>
-                        </label>
+                        <div class="multi-select" data-key="dg-kpis">
+                            <button type="button" class="multi-select-trigger" id="dg-kpi-trigger">
+                                <span class="multi-select-label">KPIs</span>
+                                <span class="multi-select-count" id="dg-kpi-count">--</span>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="multi-select-panel" id="dg-kpi-panel">
+                                <div class="dg-kpi-list" id="dg-kpi-list"></div>
+                                <div class="multi-select-footer">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="dg-kpi-reset">Por defecto</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="multi-select" data-key="dg-stores">
+                            <button type="button" class="multi-select-trigger" id="dg-store-trigger">
+                                <span class="multi-select-label">Tiendas</span>
+                                <span class="multi-select-count" id="dg-store-count">--</span>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="multi-select-panel" id="dg-store-panel">
+                                <input type="text" class="multi-select-search" id="dg-store-search" placeholder="Buscar...">
+                                <div class="store-groups" id="dg-groups">
+                                    <div class="store-groups-toolbar">
+                                        <select id="dg-groups-select" class="store-groups-select">
+                                            <option value="">-- Aplicar grupo --</option>
+                                        </select>
+                                        <button type="button" class="btn btn-secondary btn-xs" id="dg-groups-save" title="Guardar seleccion actual como grupo">+ Guardar</button>
+                                    </div>
+                                    <button type="button" class="store-groups-manage-toggle" id="dg-groups-manage">Gestionar grupos...</button>
+                                    <div class="store-groups-list hidden" id="dg-groups-list"></div>
+                                </div>
+                                <label class="multi-select-all">
+                                    <input type="checkbox" id="dg-store-all">
+                                    <span>Seleccionar todas</span>
+                                </label>
+                                <div class="multi-select-list" id="dg-store-list"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="kpi-panel-week-range" id="dg-week-range"></div>
-                <div class="available-weeks" id="dg-available"></div>
                 <div class="kpi-panel-body">
                     <div class="table-container">
                         <table class="kpi-table" id="dg-table">
@@ -494,11 +550,12 @@
         <section id="section-dash-detail" class="section hidden">
             <div class="section-header">
                 <h2>Vista detalle</h2>
+                <div class="available-weeks" id="dd-available"></div>
                 <button class="btn btn-secondary btn-back" data-action="go-home">Volver al inicio</button>
             </div>
             <div class="kpi-panel">
                 <div class="kpi-panel-header">
-                    <h3 class="kpi-panel-title">Tiendas &times; Categoria</h3>
+                    <h3 class="kpi-panel-title" id="dd-panel-title">Tiendas &times; Categoria</h3>
                     <div class="kpi-panel-filters">
                         <label class="filter-label">De W</label>
                         <input type="number" id="dd-week-from" class="week-input" min="1" value="">
@@ -510,7 +567,28 @@
                             <option value="tickets">Tickets</option>
                             <option value="buys">Compras (&euro;)</option>
                         </select>
-                        <div class="multi-select" data-key="categories">
+                        <div class="segmented" id="dd-groupby" title="Agrupar por">
+                            <button type="button" class="segmented-btn active" data-groupby="cat">Categoría</button>
+                            <button type="button" class="segmented-btn" data-groupby="sup">Supercategoría</button>
+                        </div>
+                        <button type="button" class="icon-btn" id="dd-axis-swap" title="Intercambiar ejes (tiendas ↔ grupo)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3 L4 7 L8 11"/><path d="M4 7 H20"/><path d="M16 21 L20 17 L16 13"/><path d="M20 17 H4"/></svg>
+                        </button>
+                        <div class="multi-select dd-groupby-sup" data-key="supercategories">
+                            <button type="button" class="multi-select-trigger" id="dd-sup-trigger">
+                                <span class="multi-select-label">Supercat.</span>
+                                <span class="multi-select-count" id="dd-sup-count">--</span>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="multi-select-panel" id="dd-sup-panel">
+                                <label class="multi-select-all">
+                                    <input type="checkbox" id="dd-sup-all">
+                                    <span>Seleccionar todas</span>
+                                </label>
+                                <div class="multi-select-list" id="dd-sup-list"></div>
+                            </div>
+                        </div>
+                        <div class="multi-select dd-groupby-cat" data-key="categories">
                             <button type="button" class="multi-select-trigger" id="dd-cat-trigger">
                                 <span class="multi-select-label">Categorías</span>
                                 <span class="multi-select-count" id="dd-cat-count">--</span>
@@ -528,6 +606,15 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="info-popover-wrap" id="dd-cat-info-wrap">
+                            <button type="button" class="info-popover-trigger" id="dd-cat-info-btn" title="Ver mapa de categorias por supercategoria">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            </button>
+                            <div class="info-popover" id="dd-cat-info-panel">
+                                <input type="text" class="multi-select-search" id="dd-cat-info-search" placeholder="Buscar categoria...">
+                                <div class="info-popover-body" id="dd-cat-info-body"></div>
+                            </div>
+                        </div>
                         <div class="multi-select" data-key="stores">
                             <button type="button" class="multi-select-trigger" id="dd-store-trigger">
                                 <span class="multi-select-label">Tiendas</span>
@@ -536,6 +623,16 @@
                             </button>
                             <div class="multi-select-panel" id="dd-store-panel">
                                 <input type="text" class="multi-select-search" id="dd-store-search" placeholder="Buscar...">
+                                <div class="store-groups" id="dd-groups">
+                                    <div class="store-groups-toolbar">
+                                        <select id="dd-groups-select" class="store-groups-select">
+                                            <option value="">-- Aplicar grupo --</option>
+                                        </select>
+                                        <button type="button" class="btn btn-secondary btn-xs" id="dd-groups-save" title="Guardar seleccion actual como grupo">+ Guardar</button>
+                                    </div>
+                                    <button type="button" class="store-groups-manage-toggle" id="dd-groups-manage">Gestionar grupos...</button>
+                                    <div class="store-groups-list hidden" id="dd-groups-list"></div>
+                                </div>
                                 <label class="multi-select-all">
                                     <input type="checkbox" id="dd-store-all">
                                     <span>Seleccionar todas</span>
@@ -543,15 +640,9 @@
                                 <div class="multi-select-list" id="dd-store-list"></div>
                             </div>
                         </div>
-                        <label class="toggle-switch" title="Excluir ordenes e-commerce">
-                            <input type="checkbox" id="dd-exclude-ecom" checked>
-                            <span class="toggle-slider"></span>
-                            <span class="toggle-label">Filtrar ecom</span>
-                        </label>
                     </div>
                 </div>
                 <div class="kpi-panel-week-range" id="dd-week-range"></div>
-                <div class="available-weeks" id="dd-available"></div>
                 <div class="kpi-panel-body">
                     <div class="table-container">
                         <table class="kpi-table" id="dd-table">

@@ -9,6 +9,7 @@ Thumbs.db
 # Data files (no subir CSVs pesados)
 data/*.csv
 data/*.json
+!data/categories-supercategories.json
 
 # Backups locales
 *.backup.json
