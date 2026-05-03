@@ -1,0 +1,15 @@
+{
+    "description": "Alias manuales para reconciliar nombres de tienda del CSV de captacion con los nombres canonicos de Baby Banking. Solo se necesita una entrada cuando la normalizacion automatica (tildes + casing + colapso de espacios) no resuelve la diferencia (palabras distintas, erratas, signos de puntuacion). Las claves se comparan ignorando tildes y mayusculas, asi que basta con que coincida la 'forma' del nombre en captacion.",
+    "updated": "2026-05-03",
+    "aliases": {
+        "Ciudad Real Ramon": "Ciudad Real Ramón y Cajal",
+        "Getafe": "Getafe Madrid",
+        "Hospitalet Just i Oliveres": "Hospitalet Just Oliveras",
+        "Jerez Calle Larga": "Jerez Santa María",
+        "Las Palmas Francisco Gurie": "Las Palmas Francisco Gourié",
+        "Malaga": "Málaga de la Mota",
+        "Palma Carrer Arago": "Palma Carrer d'Aragò",
+        "SAN SEBASTIAN PLAZA CATALUÑA": "San Sebastián - Plaza Cataluña",
+        "SANTA COLOMA DE GRAMANET": "Santa Coloma de Gramenet"
+    }
+}

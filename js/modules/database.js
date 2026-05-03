@@ -191,6 +191,53 @@ const Database = (() => {
         };
     }
 
+    /**
+     * Apply a store-name reconciliation function to all existing rows of a
+     * given source. Used by captacion to retro-fix store names already in DB
+     * when the normalization rules or alias map evolve. The reconcile fn
+     * receives the current store name and returns the canonical one (or the
+     * same string if no change is needed). Returns count of rows updated.
+     */
+    async function renormalizeStoresForSource(source, reconcileFn) {
+        if (!source || typeof reconcileFn !== 'function') return 0;
+        const ops = await getAllOperations();
+        const updates = [];
+        for (const r of ops) {
+            if (r.source !== source) continue;
+            const canonical = reconcileFn(r.store);
+            if (canonical && canonical !== r.store) {
+                updates.push({ id: r.id, store: canonical });
+            }
+        }
+        if (!updates.length) return 0;
+        await db.transaction('rw', db.operations, async () => {
+            for (const u of updates) {
+                await db.operations.update(u.id, { store: u.store });
+            }
+        });
+        invalidateOpsCache();
+        return updates.length;
+    }
+
+    /**
+     * Replace-by-date-range: for sources without a stable per-row dedup key
+     * (e.g. captacion, where Member Id is intentionally discarded), the CSV
+     * is treated as the source of truth for the range it covers. This
+     * deletes all existing records of the given source whose date falls
+     * within [dateFrom, dateTo] before bulk-adding the new ones.
+     * Returns count of records deleted.
+     */
+    async function replaceOperationsByDateRange(source, dateFrom, dateTo) {
+        if (!source || !dateFrom || !dateTo) return 0;
+        const deleted = await db.operations
+            .where('date')
+            .between(dateFrom, dateTo, true, true)
+            .filter(r => r.source === source)
+            .delete();
+        if (deleted > 0) invalidateOpsCache();
+        return deleted;
+    }
+
     async function logImport(meta) {
         return db.imports.add({
             source: meta.source || 'unknown',
@@ -239,12 +286,13 @@ const Database = (() => {
     async function getDateRangeBySource() {
         const result = {};
 
-        // Baby Banking ES + IC: compute min/max dates from the cached operations
-        // array in one pass (avoids two full scans + sortBy per source).
+        // Baby Banking ES + IC + Captacion: compute min/max dates from the cached
+        // operations array in one pass (avoids multiple full scans + sortBy).
         const ops = await getAllOperations();
+        const trackedSources = new Set(['baby-banking', 'baby-banking-ic', 'captacion']);
         for (const r of ops) {
             if (!r.source || !r.date) continue;
-            if (r.source !== 'baby-banking' && r.source !== 'baby-banking-ic') continue;
+            if (!trackedSources.has(r.source)) continue;
             const cur = result[r.source];
             if (!cur) {
                 result[r.source] = { from: r.date, to: r.date };
@@ -413,6 +461,8 @@ const Database = (() => {
         getAllOperations,
         invalidateOpsCache,
         bulkAddOperations,
+        replaceOperationsByDateRange,
+        renormalizeStoresForSource,
         logImport,
         getExistingFingerprints,
         crossReferenceEcom,

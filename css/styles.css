@@ -432,7 +432,7 @@ body {
 
 /* ===== HOME: COVERAGE BARS ===== */
 .coverage-row {
-    margin-bottom: 1rem;
+    margin-bottom: 0.55rem;
 }
 
 .coverage-row:last-child {
@@ -440,7 +440,7 @@ body {
 }
 
 .coverage-track {
-    height: 28px;
+    height: 20px;
     background: var(--color-bg);
     border-radius: 4px;
     position: relative;
@@ -448,11 +448,11 @@ body {
 }
 
 .coverage-bar-title {
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 600;
     color: var(--color-text);
     text-align: center;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.18rem;
     white-space: nowrap;
 }
 
@@ -480,6 +480,10 @@ body {
     background: #f59e0b;
 }
 
+.coverage-bar-attachment {
+    background: #ec4899;
+}
+
 .coverage-bar-stocks {
     background: #10b981;
 }
@@ -487,9 +491,9 @@ body {
 .coverage-dates {
     display: flex;
     justify-content: space-between;
-    font-size: 0.6rem;
+    font-size: 0.58rem;
     color: var(--color-text-light);
-    margin-top: 0.2rem;
+    margin-top: 0.15rem;
     padding: 0 2px;
 }
 
@@ -1398,8 +1402,9 @@ body {
 /* ===== IMPORT ZONES ===== */
 .import-drops {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, 150px);
+    gap: 0.6rem;
+    justify-content: center;
     margin-bottom: 1.5rem;
 }
 
@@ -1407,7 +1412,7 @@ body {
     position: relative;
     border: 2px dashed var(--color-border);
     border-radius: var(--radius);
-    padding: 1.5rem 1rem;
+    padding: 0.9rem 0.45rem;
     text-align: center;
     background: var(--color-surface);
     transition: all 0.2s;
@@ -1415,7 +1420,9 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.3rem;
+    justify-content: center;
+    gap: 0.25rem;
+    min-height: 150px;
 }
 
 /* Footer row with CSV download + info button */
@@ -1457,6 +1464,8 @@ body {
     right: -6px;
     min-width: 240px;
     max-width: 300px;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
     background: #1e293b;
     color: #f1f5f9;
     padding: 0.7rem 0.85rem;
@@ -1468,13 +1477,34 @@ body {
     pointer-events: none;
     transform: translateY(4px);
     transition: opacity 0.15s, transform 0.15s;
-    z-index: 10;
+    z-index: 1000;
     line-height: 1.45;
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
     font-weight: 400;
 }
+/* Lift the whole import-zone above its siblings while its info-pop is open,
+   so the popover doesn't get clipped behind adjacent drop-zone cards. */
+.import-zone:has(.info-btn:hover),
+.import-zone:has(.info-btn:focus) {
+    z-index: 100;
+    position: relative;
+}
+
+/* Flip popover to drop downwards when there isn't enough space above the
+   trigger (added by JS at hover/focus time so it can't be hidden behind the
+   browser chrome). */
+.info-pop.info-pop-below {
+    bottom: auto;
+    top: calc(100% + 6px);
+    transform: translateY(-4px);
+}
+.info-btn:hover .info-pop.info-pop-below,
+.info-btn:focus .info-pop.info-pop-below {
+    transform: translateY(0);
+}
+
 
 .info-btn:hover .info-pop,
 .info-btn:focus .info-pop {
@@ -1495,9 +1525,10 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: #fbbf24;
-    margin-top: 0.2rem;
 }
 
+/* Kept for backward compatibility, no longer adds extra spacing
+   (flex gap on .info-pop already provides uniform vertical rhythm). */
 .info-pop-section-first {
     margin-top: 0;
 }
@@ -1510,6 +1541,14 @@ body {
 
 .info-pop li {
     margin-bottom: 0.15rem;
+}
+
+/* Higher specificity (.info-btn .info-pop strong = 0,2,1) than .import-zone
+   strong (0,1,1) so the popover wins regardless of source order. */
+.info-btn .info-pop strong {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: inherit;
 }
 
 .info-pop em {
@@ -1779,6 +1818,186 @@ tr:hover { background: #f8fafc; }
 
 .settings-disabled h3 {
     color: var(--color-text-lighter);
+}
+
+/* ===== Deep / advanced settings (alias editor) ===== */
+.settings-deep {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+.settings-deep h3 {
+    color: #b45309;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.settings-deep-badge {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: #b45309;
+    color: #fff;
+    padding: 0.15rem 0.4rem;
+    border-radius: 999px;
+}
+.settings-warning {
+    background: #fef3c7;
+    border-left: 3px solid #d97706;
+    padding: 0.55rem 0.7rem;
+    color: #78350f !important;
+    font-size: 0.78rem !important;
+    margin-bottom: 0.7rem !important;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.settings-warning-link {
+    color: #b45309;
+    font-weight: 700;
+    text-decoration: underline;
+}
+.settings-warning-link:hover {
+    color: #78350f;
+}
+
+/* Collapsible alias editor */
+.alias-details summary {
+    cursor: pointer;
+    padding: 0.45rem 0.7rem;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #b45309;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.alias-details summary::-webkit-details-marker { display: none; }
+.alias-details summary::before {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 5px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transition: transform 0.15s;
+}
+.alias-details[open] summary::before {
+    transform: rotate(90deg);
+}
+.alias-details summary:hover {
+    background: #fde68a;
+}
+.alias-details[open] summary {
+    margin-bottom: 0.7rem;
+}
+
+.alias-editor {
+    margin-top: 0.5rem;
+}
+.alias-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+.alias-table thead {
+    background: #f9fafb;
+}
+.alias-table th, .alias-table td {
+    padding: 0.45rem 0.7rem;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+}
+.alias-table th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-light);
+    font-weight: 600;
+}
+.alias-table tbody tr:last-child td {
+    border-bottom: none;
+}
+.alias-table .alias-origin-factory {
+    display: inline-block;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-light);
+    background: #f3f4f6;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+}
+.alias-table .alias-origin-user {
+    display: inline-block;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #1d4ed8;
+    background: #dbeafe;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+}
+.alias-table .alias-origin-override {
+    display: inline-block;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #b45309;
+    background: #fef3c7;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+}
+.alias-table .alias-actions {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: flex-end;
+}
+.alias-table .alias-btn {
+    background: none;
+    border: 1px solid var(--color-border);
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.72rem;
+    cursor: pointer;
+    color: var(--color-text);
+}
+.alias-table .alias-btn:hover {
+    background: #f9fafb;
+    border-color: var(--color-text-light);
+}
+.alias-table .alias-btn-danger:hover {
+    background: #fef2f2;
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+}
+.alias-table input[type="text"] {
+    width: 100%;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+}
+.alias-add-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+    align-items: center;
+}
+.alias-add-row input[type="text"] {
+    flex: 1;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
 }
 
 .settings-group label {
@@ -2399,7 +2618,5 @@ tr:hover { background: #f8fafc; }
     .summary-filters, .kpi-panel-filters {
         flex-direction: column;
     }
-    .import-drops {
-        grid-template-columns: repeat(2, 1fr);
-    }
+    /* auto-fit handles small viewports automatically; no override needed */
 }

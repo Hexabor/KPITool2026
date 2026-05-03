@@ -9,7 +9,8 @@ const App = (() => {
         'baby-banking': 'Baby Banking ES',
         'baby-banking-ic': 'Baby Banking IC',
         'ecom': 'Ecom Sales',
-        'captacion': 'Captacion',
+        'captacion': 'Captacion de socios',
+        'attachment': 'Attachment',
         'stocks': 'Stocks (AIO)'
     };
 
@@ -180,6 +181,39 @@ const App = (() => {
         // Settings
         document.getElementById('btn-reset-tool').addEventListener('click', resetTool);
         document.getElementById('btn-save-course-start').addEventListener('click', saveCourseStart);
+
+        // Info popovers: flip to "below" when there isn't enough room above
+        bindInfoPopoverFlip();
+    }
+
+    /**
+     * The info-pop popovers (drop-zone help bubbles) drop upwards by default
+     * (bottom: 100%). When the trigger sits near the top of the viewport
+     * the popover gets clipped by the browser chrome / scrolled out of
+     * sight. On hover/focus we measure available space and toggle a
+     * .info-pop-below class so the popover drops downward instead.
+     */
+    function bindInfoPopoverFlip() {
+        document.querySelectorAll('.info-btn').forEach(btn => {
+            const decide = () => {
+                const pop = btn.querySelector('.info-pop');
+                if (!pop) return;
+                // The popover is always laid out (opacity:0, not display:none),
+                // so scrollHeight already reflects the real content height.
+                const popHeight = pop.scrollHeight;
+                const rect = btn.getBoundingClientRect();
+                const spaceAbove = rect.top;
+                const spaceBelow = window.innerHeight - rect.bottom;
+                // Flip if there isn't room above AND there's more room below
+                if (spaceAbove < popHeight + 12 && spaceBelow > spaceAbove) {
+                    pop.classList.add('info-pop-below');
+                } else {
+                    pop.classList.remove('info-pop-below');
+                }
+            };
+            btn.addEventListener('mouseenter', decide);
+            btn.addEventListener('focus', decide);
+        });
     }
 
     function handleAction(action) {
@@ -254,6 +288,7 @@ const App = (() => {
             'baby-banking-ic': { label: 'Baby Banking IC', cssClass: 'coverage-bar-bb-ic' },
             'ecom': { label: 'Ecom Sales', cssClass: 'coverage-bar-ecom' },
             'captacion': { label: 'Captacion de socios', cssClass: 'coverage-bar-captacion' },
+            'attachment': { label: 'Attachment', cssClass: 'coverage-bar-attachment' },
             'stocks': { label: 'Stocks (AIO)', cssClass: 'coverage-bar-stocks' }
         };
 
@@ -447,7 +482,8 @@ const App = (() => {
             mobilesTotal: 0, mobilesTotalNoEcom: 0,
             services: 0, servicesNoEcom: 0,
             basics: 0, basicsNoEcom: 0,
-            cashBuyAmount: 0, exchangeAmount: 0
+            cashBuyAmount: 0, exchangeAmount: 0,
+            memberships: 0
         };
     }
 
@@ -487,6 +523,9 @@ const App = (() => {
             b.cashBuyAmount += Math.abs(total);
         } else if (r.type === 'exchange') {
             b.exchangeAmount += Math.abs(total);
+        } else if (r.type === 'membership') {
+            // Each row is one captured member; ecom flag is irrelevant here
+            b.memberships += 1;
         }
     }
 
@@ -513,6 +552,7 @@ const App = (() => {
         dst.basicsNoEcom += src.basicsNoEcom;
         dst.cashBuyAmount += src.cashBuyAmount;
         dst.exchangeAmount += src.exchangeAmount;
+        dst.memberships += src.memberships || 0;
     }
 
     // Field picker: returns NoEcom version when the metric filters ecom.
@@ -542,7 +582,8 @@ const App = (() => {
         tickets: true, multiTickets: true, pctMulti: true, avgItems: true,
         mobiles: true, mobilesTotal: true, services: true, pctServices: true,
         basics: true, pctBasics: true, pctCombo: true,
-        buys: false, cashBuys: false, exchanges: false, pctVale: false  // inert (no ecom variant)
+        buys: false, cashBuys: false, exchanges: false, pctVale: false,  // inert (no ecom variant)
+        memberships: false  // inert (captacion is in-store by definition)
     };
     const ECOM_CONFIG = { ...ECOM_DEFAULTS };
     // Families for the Settings UI. Compras family is excluded (ecom has no effect there).
@@ -581,6 +622,118 @@ const App = (() => {
     function getSupercategory(category) {
         if (!category) return UNMAPPED_SUPER;
         return CATEGORY_SUPERCATEGORY[category] || UNMAPPED_SUPER;
+    }
+
+    // ============================
+    // CAPTACION STORE NAME RECONCILIATION
+    // ============================
+    // Captacion CSV ships store names that don't always match Baby Banking:
+    //   - Some are UPPERCASE ("MADRID ISLAZUL")
+    //   - Some lack tildes ("Alcala Magna" vs "Alcalá Magna")
+    //   - Some have different spacing ("ALCORCON TRES AGUAS" vs "Alcorcón TresAguas")
+    //   - A few have outright different words ("Getafe" vs "Getafe Madrid")
+    // The first three cases are resolved automatically; the fourth needs a
+    // manual alias in data/captacion-store-aliases.json.
+    function normalizeStoreName(s) {
+        if (!s || typeof s !== 'string') return '';
+        // NFD splits accented chars; the regex strips combining marks (tildes, dieresis, etc.)
+        return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+    }
+    function normalizeStoreNameCompact(s) {
+        return normalizeStoreName(s).replace(/\s+/g, '');
+    }
+
+    // captacionAliasFactory holds the JSON defaults; captacionAliasUserOverrides
+    // holds the user-edited entries from Configuracion. The final lookup map is
+    // built lazily on demand and invalidated after every edit.
+    let captacionAliasFactory = null;       // Map<normalizedKey, { rawKey, canonical }>
+    let captacionAliasMergedPromise = null; // Promise<Map<normalizedKey, canonical>>
+
+    async function loadCaptacionAliasFactory() {
+        if (captacionAliasFactory) return captacionAliasFactory;
+        const map = new Map();
+        try {
+            const res = await fetch('data/captacion-store-aliases.json', { cache: 'no-cache' });
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.aliases && typeof data.aliases === 'object') {
+                    for (const [key, value] of Object.entries(data.aliases)) {
+                        map.set(normalizeStoreName(key), { rawKey: key, canonical: value });
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Captacion aliases factory load failed:', e);
+        }
+        captacionAliasFactory = map;
+        return map;
+    }
+
+    async function getCaptacionAliasOverrides() {
+        const stored = await Database.getSetting('captacionAliasOverrides');
+        if (!stored || typeof stored !== 'object') return {};
+        return stored;
+    }
+
+    async function setCaptacionAliasOverrides(obj) {
+        await Database.setSetting('captacionAliasOverrides', obj || {});
+        // Invalidate merged cache so next reconcile picks up the change
+        captacionAliasMergedPromise = null;
+    }
+
+    function loadCaptacionAliases() {
+        if (captacionAliasMergedPromise) return captacionAliasMergedPromise;
+        captacionAliasMergedPromise = (async () => {
+            const merged = new Map();
+            const factory = await loadCaptacionAliasFactory();
+            for (const [normKey, entry] of factory.entries()) {
+                merged.set(normKey, entry.canonical);
+            }
+            const overrides = await getCaptacionAliasOverrides();
+            for (const [rawKey, canonical] of Object.entries(overrides)) {
+                if (canonical && typeof canonical === 'string') {
+                    merged.set(normalizeStoreName(rawKey), canonical);
+                }
+            }
+            return merged;
+        })();
+        captacionAliasMergedPromise.catch(() => { captacionAliasMergedPromise = null; });
+        return captacionAliasMergedPromise;
+    }
+
+    /**
+     * Build a reconcile(name) function that maps a captacion store name to
+     * its canonical Baby Banking name. Returns null if no match found.
+     */
+    function makeCaptacionReconciler(bbStores, aliasMap) {
+        const exactMap = new Map();
+        const normMap = new Map();
+        const compactMap = new Map();
+        for (const s of bbStores) {
+            if (!s || typeof s !== 'string') continue;
+            exactMap.set(s.toLowerCase(), s);
+            normMap.set(normalizeStoreName(s), s);
+            compactMap.set(normalizeStoreNameCompact(s), s);
+        }
+        return function reconcile(name) {
+            if (!name || typeof name !== 'string') return null;
+            const norm = normalizeStoreName(name);
+            // 1) Manual alias (matches by normalized key)
+            if (aliasMap && aliasMap.has(norm)) return aliasMap.get(norm);
+            // 2) Exact case-insensitive match against BB
+            const exact = exactMap.get(name.toLowerCase());
+            if (exact) return exact;
+            // 3) Tildes-insensitive match
+            const byNorm = normMap.get(norm);
+            if (byNorm) return byNorm;
+            // 4) Compact match (no spaces) for "TRES AGUAS" vs "TresAguas"
+            const byCompact = compactMap.get(normalizeStoreNameCompact(name));
+            if (byCompact) return byCompact;
+            return null;
+        };
     }
 
     // Raw metric definitions: each value/format/minOpsOf receives (b, fe).
@@ -658,7 +811,11 @@ const App = (() => {
             format: (v, b) => {
                 const t = b.cashBuyAmount + b.exchangeAmount;
                 return t > 0 ? formatPctDetail(Math.round(b.exchangeAmount), Math.round(t)) : '--';
-            } }
+            } },
+        // Captacion
+        memberships:   { label: 'Socios',
+            value: b => b.memberships || 0,
+            format: v => (v || 0).toLocaleString('es-ES') }
     };
 
     // Wrap each raw metric so callers keep using def.value(b), def.format(v, b),
@@ -869,7 +1026,8 @@ const App = (() => {
         buys:          { label: 'Compras',        title: 'Cash buy + exchange' },
         cashBuys:      { label: 'Cash buys',      title: 'Compras en efectivo' },
         exchanges:     { label: 'Exchanges',      title: 'Compras en vale' },
-        pctVale:       { label: '% Vale',         title: '% de compras hechas con vale de tienda (exchange)' }
+        pctVale:       { label: '% Vale',         title: '% de compras hechas con vale de tienda (exchange)' },
+        memberships:   { label: 'Socios',         title: 'Socios captados en el rango de semanas' }
     };
 
     // Dashboard: Detail state (sort + multi-select filters + grouping + axis)
@@ -1561,6 +1719,13 @@ const App = (() => {
                 return;
             }
 
+            // Captacion: replace-by-date-range (no per-row dedup key,
+            // since Member Id is intentionally discarded for anonymization).
+            if (currentImportSource === 'captacion') {
+                await confirmCaptacionImport(result.records, file.name);
+                return;
+            }
+
             // Baby Banking (and other sources): normal import flow
             // Deduplicate: skip records that already exist from the SAME source
             UI.showProgress(0, 1, 'Comprobando duplicados...');
@@ -1619,6 +1784,99 @@ const App = (() => {
             UI.hideProgress();
             UI.addLog(`Error: ${err.message}`, 'error');
         }
+    }
+
+    // ============================
+    // CAPTACION (Store Memberships) IMPORT
+    // ============================
+    // Strategy: replace-by-date-range. The CSV is treated as the source of
+    // truth for the dates it covers. Existing captacion rows in that range
+    // are deleted before adding the new ones. This avoids needing a
+    // per-row dedup key (Member Id is intentionally not stored).
+    async function confirmCaptacionImport(records, filename) {
+        if (!records.length) {
+            UI.hideProgress();
+            UI.addLog('No se encontraron filas validas en el CSV de captacion.', 'error');
+            currentPreviewData = null;
+            return;
+        }
+
+        // Build a reconciliation function that maps any captacion store name
+        // to the canonical Baby Banking name. Cascade:
+        //   1) manual alias from data/captacion-store-aliases.json
+        //   2) exact match (case-insensitive) against BB stores
+        //   3) tildes-insensitive match
+        //   4) compact match (also collapses spaces) for "TRES AGUAS" vs "TresAguas"
+        // If nothing matches, the name is returned unchanged and listed as unmatched.
+        const knownStores = await Database.getDistinctValues('store');
+        const aliases = await loadCaptacionAliases();
+        const reconcile = makeCaptacionReconciler(knownStores, aliases);
+
+        // Apply to incoming records
+        let resolved = 0;
+        const unmatchedSet = new Set();
+        for (const r of records) {
+            if (!r.store) continue;
+            const canonical = reconcile(r.store);
+            if (!canonical) {
+                unmatchedSet.add(r.store);
+                continue;
+            }
+            if (canonical !== r.store) {
+                r.store = canonical;
+                resolved++;
+            }
+        }
+        if (resolved > 0) {
+            UI.addLog(`Tiendas normalizadas al canon de Baby Banking: ${resolved.toLocaleString()} filas entrantes`, 'success');
+        }
+        if (unmatchedSet.size > 0) {
+            const sample = [...unmatchedSet].slice(0, 5).join(', ');
+            const more = unmatchedSet.size > 5 ? ` (+${unmatchedSet.size - 5})` : '';
+            UI.addLog(`Aviso: ${unmatchedSet.size} tiendas sin match en Baby Banking: ${sample}${more}. Anade un alias en data/captacion-store-aliases.json.`, 'error');
+        }
+
+        // Also retro-fix existing captacion rows in DB so they pick up
+        // any new alias/normalization rule without forcing re-import.
+        const retroFixed = await Database.renormalizeStoresForSource('captacion', s => reconcile(s) || s);
+        if (retroFixed > 0) {
+            UI.addLog(`Tiendas previas renormalizadas en BD: ${retroFixed.toLocaleString()} filas`, 'success');
+        }
+
+        const dates = records.map(r => r.date).filter(Boolean).sort();
+        const dateFrom = dates[0];
+        const dateTo = dates[dates.length - 1];
+
+        UI.showProgress(0, 1, 'Reemplazando rango previo de captacion...');
+        const deleted = await Database.replaceOperationsByDateRange('captacion', dateFrom, dateTo);
+        if (deleted > 0) {
+            UI.addLog(`Reemplazo: ${deleted.toLocaleString()} filas previas de captacion en ${UI.formatDate(dateFrom)} — ${UI.formatDate(dateTo)} eliminadas`, 'success');
+        }
+
+        UI.showProgress(0, records.length, 'Guardando socios...');
+        const weekFn = KPIEngine.helpers.businessWeek;
+        const added = await Database.bulkAddOperations(records, (current, total) => {
+            UI.showProgress(current, total);
+        }, weekFn, 'captacion');
+
+        const storeSet = new Set(records.map(r => r.store).filter(Boolean));
+        await Database.logImport({
+            source: 'captacion',
+            filename,
+            rowCount: added,
+            dateFrom,
+            dateTo,
+            storeCount: storeSet.size,
+            stores: [...storeSet]
+        });
+
+        UI.hideProgress();
+        UI.addLog(`Captacion OK: ${added.toLocaleString()} socios importados`, 'success');
+
+        currentPreviewData = null;
+        resetDashboardFilters();
+        await renderImportHistory();
+        await refreshHome();
     }
 
     // ============================
@@ -1862,11 +2120,197 @@ const App = (() => {
         updateCourseStartInfo();
 
         renderEcomConfigUI();
+        await renderAliasEditor();
 
         if (DriveSync.isConnected()) {
             const info = await DriveSync.getBackupInfo();
             UI.updateDriveStatus(info ? `Conectado. Ultimo backup: ${info.lastModified}` : 'Conectado.');
         }
+    }
+
+    // ============================
+    // ALIAS EDITOR (Configuracion profunda)
+    // ============================
+    async function renderAliasEditor() {
+        const tbody = document.getElementById('alias-table-body');
+        if (!tbody) return;
+
+        const factory = await loadCaptacionAliasFactory();   // Map<normKey, {rawKey, canonical}>
+        const overrides = await getCaptacionAliasOverrides(); // raw object
+
+        // Build a unified map keyed by normalized key, marking origin
+        const rows = new Map();
+        for (const [normKey, entry] of factory.entries()) {
+            rows.set(normKey, {
+                key: entry.rawKey,
+                factoryValue: entry.canonical,
+                userValue: null,
+                origin: 'factory'
+            });
+        }
+        for (const [rawKey, value] of Object.entries(overrides)) {
+            const normKey = normalizeStoreName(rawKey);
+            const existing = rows.get(normKey);
+            if (existing) {
+                existing.userValue = value;
+                existing.origin = 'override';
+            } else {
+                rows.set(normKey, {
+                    key: rawKey,
+                    factoryValue: null,
+                    userValue: value,
+                    origin: 'user'
+                });
+            }
+        }
+
+        const sorted = [...rows.values()].sort((a, b) => a.key.localeCompare(b.key));
+
+        if (sorted.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-msg">No hay aliases definidos.</td></tr>';
+        } else {
+            tbody.innerHTML = sorted.map(r => {
+                const currentValue = r.userValue || r.factoryValue || '';
+                const badge = r.origin === 'factory'
+                    ? '<span class="alias-origin-factory" title="Definido en data/captacion-store-aliases.json">Fabrica</span>'
+                    : r.origin === 'override'
+                        ? `<span class="alias-origin-override" title="Sobrescribe el valor de fabrica: ${escapeHtml(r.factoryValue)}">Modificado</span>`
+                        : '<span class="alias-origin-user">Personalizado</span>';
+                const actions = r.origin === 'user'
+                    ? `<button type="button" class="alias-btn" data-action="edit" data-key="${escapeHtml(r.key)}">Editar</button>
+                       <button type="button" class="alias-btn alias-btn-danger" data-action="remove" data-key="${escapeHtml(r.key)}">Eliminar</button>`
+                    : r.origin === 'override'
+                        ? `<button type="button" class="alias-btn" data-action="edit" data-key="${escapeHtml(r.key)}">Editar</button>
+                           <button type="button" class="alias-btn alias-btn-danger" data-action="restore" data-key="${escapeHtml(r.key)}" title="Vuelve al valor de fabrica">Restaurar</button>`
+                        : `<button type="button" class="alias-btn" data-action="edit" data-key="${escapeHtml(r.key)}">Sobrescribir</button>`;
+                return `<tr data-norm-key="${escapeHtml(normalizeStoreName(r.key))}">
+                    <td>${escapeHtml(r.key)}</td>
+                    <td class="alias-value-cell">${escapeHtml(currentValue)}</td>
+                    <td>${badge}</td>
+                    <td><div class="alias-actions">${actions}</div></td>
+                </tr>`;
+            }).join('');
+        }
+
+        // Wire actions
+        tbody.querySelectorAll('button[data-action]').forEach(btn => {
+            const action = btn.dataset.action;
+            const key = btn.dataset.key;
+            btn.addEventListener('click', () => handleAliasAction(action, key));
+        });
+
+        // Add-row button
+        const addBtn = document.getElementById('btn-alias-add');
+        if (addBtn && !addBtn.dataset.bound) {
+            addBtn.dataset.bound = '1';
+            addBtn.addEventListener('click', handleAliasAdd);
+        }
+    }
+
+    async function handleAliasAction(action, rawKey) {
+        if (action === 'edit') {
+            startInlineAliasEdit(rawKey);
+        } else if (action === 'restore') {
+            if (!confirm(`Restaurar "${rawKey}" al valor de fabrica?`)) return;
+            const overrides = await getCaptacionAliasOverrides();
+            delete overrides[rawKey];
+            // Also remove any case-variant entry that normalizes to same key
+            const norm = normalizeStoreName(rawKey);
+            for (const k of Object.keys(overrides)) {
+                if (normalizeStoreName(k) === norm) delete overrides[k];
+            }
+            await setCaptacionAliasOverrides(overrides);
+            await reapplyAliasesToExistingData();
+            await renderAliasEditor();
+        } else if (action === 'remove') {
+            if (!confirm(`Eliminar el alias personalizado para "${rawKey}"?`)) return;
+            const overrides = await getCaptacionAliasOverrides();
+            delete overrides[rawKey];
+            const norm = normalizeStoreName(rawKey);
+            for (const k of Object.keys(overrides)) {
+                if (normalizeStoreName(k) === norm) delete overrides[k];
+            }
+            await setCaptacionAliasOverrides(overrides);
+            await reapplyAliasesToExistingData();
+            await renderAliasEditor();
+        }
+    }
+
+    /**
+     * After any alias change, rerun the reconciler against existing captacion
+     * rows so the dashboards reflect the new mapping immediately (no need to
+     * re-import the CSV).
+     */
+    async function reapplyAliasesToExistingData() {
+        try {
+            const knownStores = await Database.getDistinctValues('store');
+            const aliases = await loadCaptacionAliases();
+            const reconcile = makeCaptacionReconciler(knownStores, aliases);
+            const fixed = await Database.renormalizeStoresForSource('captacion', s => reconcile(s) || s);
+            if (fixed > 0) {
+                UI.addLog(`Aliases aplicados: ${fixed.toLocaleString()} filas de captacion renormalizadas`, 'success');
+            }
+        } catch (e) {
+            console.warn('reapplyAliasesToExistingData failed:', e);
+        }
+    }
+
+    function startInlineAliasEdit(rawKey) {
+        const tbody = document.getElementById('alias-table-body');
+        const norm = normalizeStoreName(rawKey);
+        const row = tbody.querySelector(`tr[data-norm-key="${CSS.escape(norm)}"]`);
+        if (!row) return;
+        const valueCell = row.querySelector('.alias-value-cell');
+        const actionsCell = row.querySelector('.alias-actions');
+        const currentValue = valueCell.textContent;
+        valueCell.innerHTML = `<input type="text" class="alias-edit-input" value="${escapeHtml(currentValue)}">`;
+        actionsCell.innerHTML = `
+            <button type="button" class="alias-btn" data-action="save">Guardar</button>
+            <button type="button" class="alias-btn" data-action="cancel">Cancelar</button>
+        `;
+        const input = valueCell.querySelector('input');
+        input.focus();
+        input.select();
+        actionsCell.querySelector('[data-action="save"]').addEventListener('click', async () => {
+            const newValue = input.value.trim();
+            if (!newValue) { alert('El valor no puede estar vacio.'); return; }
+            const overrides = await getCaptacionAliasOverrides();
+            overrides[rawKey] = newValue;
+            await setCaptacionAliasOverrides(overrides);
+            await reapplyAliasesToExistingData();
+            await renderAliasEditor();
+        });
+        actionsCell.querySelector('[data-action="cancel"]').addEventListener('click', () => {
+            renderAliasEditor();
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') actionsCell.querySelector('[data-action="save"]').click();
+            if (e.key === 'Escape') actionsCell.querySelector('[data-action="cancel"]').click();
+        });
+    }
+
+    async function handleAliasAdd() {
+        const keyInput = document.getElementById('alias-new-key');
+        const valueInput = document.getElementById('alias-new-value');
+        const key = keyInput.value.trim();
+        const value = valueInput.value.trim();
+        if (!key || !value) { alert('Rellena los dos campos para anadir un alias.'); return; }
+        const overrides = await getCaptacionAliasOverrides();
+        // Detect collision with existing override (case/tildes-insensitive)
+        const norm = normalizeStoreName(key);
+        for (const existingKey of Object.keys(overrides)) {
+            if (normalizeStoreName(existingKey) === norm) {
+                if (!confirm(`Ya existe un alias para "${existingKey}". Sobrescribirlo?`)) return;
+                delete overrides[existingKey];
+                break;
+            }
+        }
+        overrides[key] = value;
+        await setCaptacionAliasOverrides(overrides);
+        await reapplyAliasesToExistingData();
+        keyInput.value = '';
+        valueInput.value = '';
+        await renderAliasEditor();
     }
 
     function renderEcomConfigUI() {
@@ -2781,7 +3225,7 @@ const App = (() => {
         updateWeekRangeLabel('dg-week-range', weekFrom, weekTo);
 
         const activeCols = dgState.columns || DG_DEFAULT_COLUMNS;
-        const totalCols = activeCols.length + 1 + 2; // name + metrics + 2 placeholders
+        const totalCols = activeCols.length + 1 + 1; // name + metrics + 1 placeholder (Stock)
 
         if (weekTo < weekFrom || weekTo - weekFrom > 52) {
             document.getElementById('dg-tbody').innerHTML =
@@ -2839,7 +3283,6 @@ const App = (() => {
         thead.innerHTML = `<tr>
             <th class="col-name sortable${sortCls('name')}" data-dg-sort="name">Tienda</th>
             ${metricThs}
-            <th>Socios</th>
             <th>Stock</th>
         </tr>`;
         thead.querySelectorAll('th.sortable').forEach(th => {
@@ -2871,7 +3314,6 @@ const App = (() => {
                 <td class="col-name">${escapeHtml(store)}</td>
                 ${metricCells}
                 <td class="cell-empty">--</td>
-                <td class="cell-empty">--</td>
             </tr>`;
         }
         tbody.innerHTML = html;
@@ -2886,7 +3328,6 @@ const App = (() => {
         document.getElementById('dg-tfoot').innerHTML = `<tr class="row-total">
             <td class="col-name"><strong>TOTAL</strong></td>
             ${totalCells}
-            <td class="cell-empty">--</td>
             <td class="cell-empty">--</td>
         </tr>`;
     }
@@ -2969,6 +3410,9 @@ const App = (() => {
         const allStoresSet = new Set();
 
         for (const r of weekRecords) {
+            // Memberships have no category; they belong to Vista general /
+            // Vista tienda-empleado, not to the category-axis Vista detalle.
+            if (r.type === 'membership') continue;
             if (excludeEcom && r.channel === 'ecom') continue;
             const store = r.store || '?';
             const cat = r.category || 'Sin categoria';

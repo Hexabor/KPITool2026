@@ -4,6 +4,25 @@
  */
 const Changelog = [
     {
+        date: '03/05/2026 (sesion 8)',
+        items: [
+            { type: 'new', text: 'Importador de Captacion de socios activado. CSV de Looker (pestaña "New Store Membership", ES + IC). Cada fila = un socio captado por staff/tienda en una fecha. Member Id y Operating Company se descartan al importar para anonimizacion: la herramienta solo guarda que ese dia ese staff capto un socio' },
+            { type: 'new', text: 'Importador de captacion: politica de reemplazo por rango. Cada importacion borra los socios previos cuyas fechas caen dentro del CSV nuevo y los sustituye. Re-importar no duplica filas' },
+            { type: 'new', text: 'KPI "Socios" en Vista general (selector de columnas), Vista tienda/empleado (modo individual y compare) y barra de cobertura del Home. La columna placeholder "Socios" en Vista general deja de ser placeholder' },
+            { type: 'new', text: 'Reconciliacion automatica de nombres de tienda en captacion contra Baby Banking. Cascada: quita prefijo "CeX ", ignora tildes, mayusculas y espacios. Para discrepancias mayores (palabras distintas, erratas) hay un set de aliases manuales precargado en data/captacion-store-aliases.json' },
+            { type: 'new', text: 'Configuracion: editor de aliases de tienda colapsable con aviso "configuracion profunda" y mailto al desarrollador (abeatrice@webuy.com). Permite anadir, sobrescribir o restaurar aliases. Cualquier cambio reaplica al instante el reconciler a las filas ya importadas, sin re-importar' },
+            { type: 'new', text: 'Drop zone placeholder para Attachment (% de ventas en tienda realizadas con socio). Mismo Looker que captacion, pestaña "Store Membership Attachment", ES + IC. Implementacion pendiente' },
+            { type: 'change', text: 'Importador rediseñado: 6 drop zones cuadrados, compactos (150px) y centrados horizontalmente con grid auto-fit. Antes los cards eran rectangulos que ocupaban todo el ancho. Cards igualados en altura aunque algunos tengan solo una linea de descripcion' },
+            { type: 'change', text: 'Barras de cobertura del Home reducidas en altura (~30%) para que las 6 fuentes quepan sin scroll en pantallas full HD' },
+            { type: 'new', text: 'Popovers de info de drop-zones: detectan al hover si hay sitio arriba; si no, se abren hacia abajo. Antes podian quedar ocultos por la barra del navegador' },
+            { type: 'new', text: 'Popovers escalan con scroll vertical interno cuando el contenido excede la altura disponible (max-height: calc(100vh - 80px))' },
+            { type: 'fix', text: 'Popovers: las palabras en negrita ahora se ven. Cascada CSS .import-zone strong forzaba color oscuro sobre fondo oscuro del popover y las palabras destacadas quedaban invisibles' },
+            { type: 'change', text: 'Popovers: z-index subido a 1000 y el card padre se eleva mediante :has() mientras el boton i esta activo, para que no queden por detras de cards adyacentes. Espaciado vertical uniformizado entre headings y texto' },
+            { type: 'change', text: 'Vista detalle: filas con type="membership" se filtran al inicio del loop para no contaminar la lista de categorias (los socios no tienen categoria)' },
+            { type: 'change', text: 'Data Explorer: filtro de tipo de transaccion incluye "Captacion de socios" (membership) para inspeccionar las filas importadas' },
+        ]
+    },
+    {
         date: '23/04/2026 (sesion 7)',
         items: [
             { type: 'new', text: 'Vista tienda/empleado: modo comparar KPIs. Al fijar una sola tienda o empleado, la tabla cambia a filas=KPIs, columnas=semanas, con sparkline por fila. Multi-select de KPIs para elegir cuales comparar (6 por defecto)' },

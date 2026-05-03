@@ -10,6 +10,7 @@ Thumbs.db
 data/*.csv
 data/*.json
 !data/categories-supercategories.json
+!data/captacion-store-aliases.json
 
 # Backups locales
 *.backup.json

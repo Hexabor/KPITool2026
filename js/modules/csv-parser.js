@@ -40,6 +40,15 @@ const CSVParser = (() => {
         reference: ['epos order', 'epos orderid']
     };
 
+    // Captacion (Store Memberships) mapping: only what we keep.
+    // Member Id and Operating Company are intentionally discarded for
+    // anonymization. Each row = 1 captured member by that staff on that date.
+    const CAPTACION_MAPPING = {
+        'branch': 'store',
+        'staff': 'staff',
+        'subscriptiondate': 'date'
+    };
+
     let columnMapping = { ...DEFAULT_MAPPING };
 
     /** Update column mapping */
@@ -90,6 +99,16 @@ const CSVParser = (() => {
                         detected[header] = field;
                         break;
                     }
+                }
+            }
+            return detected;
+        }
+
+        if (source === 'captacion') {
+            for (const header of headers) {
+                const normalized = header.trim().toLowerCase();
+                if (CAPTACION_MAPPING[normalized]) {
+                    detected[header] = CAPTACION_MAPPING[normalized];
                 }
             }
             return detected;
@@ -171,6 +190,24 @@ const CSVParser = (() => {
             if (!record.reference && !record.date) {
                 return null;
             }
+            return record;
+        }
+
+        // Captacion (Store Memberships): each row = 1 member captured.
+        // We keep only store + staff + date. Member Id and Operating Company
+        // are intentionally discarded (anonymization).
+        if (source === 'captacion') {
+            if (record.date) record.date = normalizeDate(record.date);
+            if (record.store) {
+                // The captacion CSV prefixes branches with "CeX " (e.g. "CeX YORK"),
+                // while Baby Banking exports them without the prefix ("York").
+                // Strip the prefix so memberships join correctly with sales.
+                record.store = record.store.trim().replace(/^CeX\s+/i, '');
+            }
+            if (record.staff) record.staff = record.staff.trim();
+            // Skip rows with no usable data
+            if (!record.date || !record.store) return null;
+            record.type = 'membership';
             return record;
         }
 
