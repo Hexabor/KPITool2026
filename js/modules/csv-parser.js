@@ -323,6 +323,13 @@ const CSVParser = (() => {
         parseFull,
         setMapping,
         getMapping,
-        detectMapping
+        detectMapping,
+        // Funciones internas expuestas solo para tests. No usar desde la app.
+        _internals: { mapRecord, normalizeDate }
     };
 })();
+
+// Export para entornos Node (tests con Vitest). Inerte en navegador.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = CSVParser;
+}

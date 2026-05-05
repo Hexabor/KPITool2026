@@ -1,0 +1,13 @@
+{
+  "name": "kpi-metrics-2026",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tests para KPI Metrics 2026 (la app sigue siendo HTML estatico, esto es solo herramienta de dev)",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0"
+  }
+}

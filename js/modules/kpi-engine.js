@@ -334,3 +334,8 @@ const KPIEngine = (() => {
         helpers: { groupBy, businessWeek, businessWeekKey, monthKey, periodKey }
     };
 })();
+
+// Export para entornos Node (tests con Vitest). Inerte en navegador.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = KPIEngine;
+}

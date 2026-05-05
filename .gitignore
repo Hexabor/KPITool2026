@@ -14,3 +14,7 @@ data/*.json
 
 # Backups locales
 *.backup.json
+
+# Node modules (Vitest, solo herramienta de dev — no llega al cliente)
+node_modules/
+
