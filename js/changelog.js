@@ -4,6 +4,12 @@
  */
 const Changelog = [
     {
+        date: '05/05/2026 (sesion 9)',
+        items: [
+            { type: 'fix', text: 'Rebrand: "KPI Metrix 2026" → "KPI Metrics 2026". El nombre anterior era un typo. El identificador interno (DB Dexie, carpeta de backup en Drive) sigue siendo "KPITool2026" para no romper datos existentes' },
+        ]
+    },
+    {
         date: '03/05/2026 (sesion 8)',
         items: [
             { type: 'new', text: 'Importador de Captacion de socios activado. CSV de Looker (pestaña "New Store Membership", ES + IC). Cada fila = un socio captado por staff/tienda en una fecha. Member Id y Operating Company se descartan al importar para anonimizacion: la herramienta solo guarda que ese dia ese staff capto un socio' },

@@ -1,5 +1,5 @@
 /**
- * KPI Metrix 2026 - Main Application Controller
+ * KPI Metrics 2026 - Main Application Controller
  */
 const App = (() => {
     let currentPreviewData = null;
@@ -61,7 +61,7 @@ const App = (() => {
 
         updateTopbarWeek();
 
-        console.log('KPI Metrix 2026 initialized');
+        console.log('KPI Metrics 2026 initialized');
     }
 
     // ============================
